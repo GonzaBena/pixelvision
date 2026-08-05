@@ -115,6 +115,34 @@ export interface EditorState {
   pushRecentColor: (color: string) => void
 }
 
+const SETTINGS_KEY = 'pixelvision_tool_settings_v1'
+
+interface SavedSettings {
+  options?: Partial<ToolOptions>
+  recentColors?: string[]
+  restrictPalette?: string | null
+}
+
+function loadSavedSettings(): SavedSettings | null {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SETTINGS_KEY) : null
+    if (!raw) return null
+    return JSON.parse(raw) as SavedSettings
+  } catch {
+    return null
+  }
+}
+
+function persistSettings(patch: SavedSettings) {
+  try {
+    if (typeof localStorage === 'undefined') return
+    const current = loadSavedSettings() || {}
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...current, ...patch }))
+  } catch {
+    // Ignorar errores de cuota de disco
+  }
+}
+
 /** Ajusta un color a la entrada más cercana de la paleta activa, si hay una. */
 function snapColor(color: string, paletteId: string | null): string {
   if (!paletteId) return color
@@ -126,18 +154,20 @@ function snapColor(color: string, paletteId: string | null): string {
   return rgbaToHex(mapped)
 }
 
+const savedSettings = loadSavedSettings()
+
 export const useEditor = create<EditorState>((set, get) => ({
   scene: initialScene(),
   draft: null,
   selection: [],
   tool: 'brush',
-  options: { ...DEFAULT_TOOL_OPTIONS },
+  options: { ...DEFAULT_TOOL_OPTIONS, ...(savedSettings?.options ?? {}) },
   eraserMode: 'object',
   viewport: { zoom: 8, panX: 0, panY: 0 },
   showGrid: true,
   showTileGrid: 0,
-  restrictPalette: null,
-  recentColors: [],
+  restrictPalette: savedSettings?.restrictPalette ?? null,
+  recentColors: savedSettings?.recentColors ?? [],
   version: 0,
   past: [],
   future: [],
@@ -209,6 +239,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const next = { ...s.options, ...patch }
       if (patch.stroke) next.stroke = snapColor(patch.stroke, s.restrictPalette)
       if (patch.fill) next.fill = snapColor(patch.fill, s.restrictPalette)
+      persistSettings({ options: next })
       return { options: next }
     }),
 
@@ -225,6 +256,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         options.stroke = snapColor(options.stroke, restrictPalette)
         if (options.fill) options.fill = snapColor(options.fill, restrictPalette)
       }
+      persistSettings({ restrictPalette, options })
       return { restrictPalette, options }
     }),
 
@@ -393,9 +425,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   getElement: (id) => get().scene.elements.find((e) => e.id === id),
 
   pushRecentColor: (color) =>
-    set((s) => ({
-      recentColors: [color, ...s.recentColors.filter((c) => c !== color)].slice(0, 12),
-    })),
+    set((s) => {
+      const recentColors = [color, ...s.recentColors.filter((c) => c !== color)].slice(0, 12)
+      persistSettings({ recentColors })
+      return { recentColors }
+    }),
 }))
 
 /** Caja de selección combinada, en coordenadas de píxel del lienzo. */
