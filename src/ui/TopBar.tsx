@@ -9,6 +9,7 @@ import {
   IconLayers,
   IconMenu,
   IconRedo,
+  IconSliders,
   IconTrash,
   IconUndo,
   IconUpload,
@@ -19,10 +20,12 @@ const PRESETS = [16, 32, 48, 64, 96, 128, 256]
 interface Props {
   onToggleLayers: () => void
   onToggleHelp: () => void
+  onToggleProps: () => void
   layersOpen: boolean
+  propsOpen: boolean
 }
 
-export function TopBar({ onToggleLayers, onToggleHelp, layersOpen }: Props) {
+export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen, propsOpen }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmingClear, setConfirmingClear] = useState(false)
   const [openError, setOpenError] = useState<string | null>(null)
@@ -42,11 +45,15 @@ export function TopBar({ onToggleLayers, onToggleHelp, layersOpen }: Props) {
       setOpenError(null)
       return
     }
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: MouseEvent | TouchEvent) => {
       if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
     }
     document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
   }, [menuOpen])
 
   const st = useEditor.getState()
@@ -243,6 +250,16 @@ export function TopBar({ onToggleLayers, onToggleHelp, layersOpen }: Props) {
           <option value={16}>16 px</option>
           <option value={32}>32 px</option>
         </select>
+        <button
+          type="button"
+          className={`btn btn--icon${propsOpen ? ' btn--on' : ''}`}
+          onClick={onToggleProps}
+          title="Propiedades"
+          aria-label="Propiedades"
+          aria-pressed={propsOpen}
+        >
+          <IconSliders />
+        </button>
         <button
           type="button"
           className={`btn btn--icon${layersOpen ? ' btn--on' : ''}`}

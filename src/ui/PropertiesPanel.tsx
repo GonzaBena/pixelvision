@@ -17,7 +17,12 @@ import {
 const SHAPE_TOOLS = new Set(['rect', 'ellipse', 'triangle', 'diamond', 'star', 'hexagon'])
 const STROKE_TOOLS = new Set([...SHAPE_TOOLS, 'line', 'arrow'])
 
-export function PropertiesPanel() {
+interface PropertiesPanelProps {
+  open?: boolean
+  onClose?: () => void
+}
+
+export function PropertiesPanel({ open = false, onClose }: PropertiesPanelProps) {
   const tool = useEditor((s) => s.tool)
   const options = useEditor((s) => s.options)
   const setOptions = useEditor((s) => s.setOptions)
@@ -65,7 +70,16 @@ export function PropertiesPanel() {
   }
 
   return (
-    <aside className="island panel" aria-label="Propiedades">
+    <aside className={`island panel${open ? ' panel--open' : ''}`} aria-label="Propiedades">
+      <div className="panel__head-mobile">
+        <span className="panel__title-mobile">Propiedades</span>
+        {onClose && (
+          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose}>
+            Cerrar
+          </button>
+        )}
+      </div>
+
       <CanvasBackground />
 
       {showDrawingOptions && <div className="panel__sep" />}

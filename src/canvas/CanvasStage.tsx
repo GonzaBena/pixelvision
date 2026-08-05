@@ -72,6 +72,16 @@ export function CanvasStage() {
   const strokeGroup = useRef<{ id: string; key: string } | null>(null)
   const dprRef = useRef(1)
 
+  /** Punteros táctiles activos para soporte de gestos multitáctiles. */
+  const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const pinchState = useRef<{
+    dist: number
+    centerCss: { x: number; y: number }
+    zoom: number
+    panX: number
+    panY: number
+  } | null>(null)
+
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [cursorLabel, setCursorLabel] = useState('default')
   const [dropping, setDropping] = useState(false)
@@ -377,6 +387,33 @@ export function CanvasStage() {
     const st = useEditor.getState()
     const css = localCss(e)
     const p = toPixel(e)
+
+    if (e.pointerType === 'touch') {
+      activePointers.current.set(e.pointerId, css)
+    }
+
+    if (activePointers.current.size >= 2) {
+      // Al detectar 2 o más dedos, cancelar cualquier trazo/figura parcial para evitar trazos fantasma.
+      if (st.draft) st.setDraft(null)
+      marquee.current = null
+      interaction.current = { kind: 'none' }
+
+      const pointers = Array.from(activePointers.current.values())
+      const p1 = pointers[0]
+      const p2 = pointers[1]
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+      const centerCss = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
+      pinchState.current = {
+        dist,
+        centerCss,
+        zoom: st.viewport.zoom,
+        panX: st.viewport.panX,
+        panY: st.viewport.panY,
+      }
+      requestDraw.current()
+      return
+    }
+
     if (st.tool === 'text') {
       // El texto no arrastra, así que no necesita capturar el puntero; y hay que
       // frenar el foco por defecto para que el clic no se lo quite al campo que
@@ -445,7 +482,9 @@ export function CanvasStage() {
         const b = selectionBounds(st)
         if (b) {
           const pos = handlePositions(t, b)
-          const r = handleRadius(t) * 1.8
+          // En táctil aumentamos la tolerancia para facilitar tocar los handles con el dedo.
+          const handleMultiplier = e.pointerType === 'touch' ? 2.8 : 1.8
+          const r = handleRadius(t) * handleMultiplier
           const dx = css.x * t.dpr
           const dy = css.y * t.dpr
           for (const id of HANDLE_IDS) {
@@ -458,7 +497,8 @@ export function CanvasStage() {
             }
           }
         }
-        const hit = hitTestWithSlop(st.scene, p.x, p.y, 1)
+        const hitSlop = e.pointerType === 'touch' ? 3 : 1
+        const hit = hitTestWithSlop(st.scene, p.x, p.y, hitSlop)
         if (hit) {
           let sel = st.selection
           if (e.shiftKey) {
@@ -503,6 +543,42 @@ export function CanvasStage() {
 
   const onPointerMove = (e: React.PointerEvent) => {
     const st = useEditor.getState()
+    const css = localCss(e)
+
+    if (e.pointerType === 'touch' && activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, css)
+    }
+
+    if (activePointers.current.size >= 2 && pinchState.current) {
+      const pointers = Array.from(activePointers.current.values())
+      const p1 = pointers[0]
+      const p2 = pointers[1]
+      const curDist = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+      const curCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
+
+      const scale = pinchState.current.dist > 0 ? curDist / pinchState.current.dist : 1
+      const rawZoom = pinchState.current.zoom * scale
+      const targetZoom = Math.max(0.1, Math.min(64, rawZoom))
+
+      const initPanX = pinchState.current.panX
+      const initPanY = pinchState.current.panY
+      const initZoom = pinchState.current.zoom
+      const centerInit = pinchState.current.centerCss
+
+      const canvasX = (centerInit.x - initPanX) / initZoom
+      const canvasY = (centerInit.y - initPanY) / initZoom
+
+      st.setViewport({
+        zoom: targetZoom,
+        panX: curCenter.x - canvasX * targetZoom,
+        panY: curCenter.y - canvasY * targetZoom,
+      })
+      requestDraw.current()
+      return
+    }
+
+    if (pinchState.current) return
+
     const p = toPixel(e)
     const prev = cursorPx.current
     cursorPx.current = p
@@ -511,7 +587,6 @@ export function CanvasStage() {
     const it = interaction.current
     switch (it.kind) {
       case 'pan': {
-        const css = localCss(e)
         st.setViewport({
           panX: it.panX + (css.x - it.cssX),
           panY: it.panY + (css.y - it.cssY),
@@ -647,6 +722,16 @@ export function CanvasStage() {
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') {
+      activePointers.current.delete(e.pointerId)
+      if (activePointers.current.size < 2) {
+        pinchState.current = null
+      }
+      if (activePointers.current.size > 0) {
+        return
+      }
+    }
+
     const st = useEditor.getState()
     const it = interaction.current
     if (it.kind === 'shape' && st.draft) {

@@ -23,6 +23,7 @@ function isTyping(target: EventTarget | null): boolean {
 
 export default function App() {
   const [layersOpen, setLayersOpen] = useState(false)
+  const [propsOpen, setPropsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -180,11 +181,13 @@ export default function App() {
 
       <TopBar
         layersOpen={layersOpen}
+        propsOpen={propsOpen}
         onToggleLayers={() => setLayersOpen((v) => !v)}
+        onToggleProps={() => setPropsOpen((v) => !v)}
         onToggleHelp={() => setHelpOpen((v) => !v)}
       />
       <Toolbar onPickImage={() => fileRef.current?.click()} />
-      <PropertiesPanel />
+      <PropertiesPanel open={propsOpen} onClose={() => setPropsOpen(false)} />
       {layersOpen && <LayersPanel onClose={() => setLayersOpen(false)} />}
       <ZoomControls />
       {helpOpen && <ShortcutsHelp onClose={() => setHelpOpen(false)} />}
