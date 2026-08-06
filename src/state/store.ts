@@ -50,9 +50,11 @@ function cloneScene(s: Scene): Scene {
   return { canvas: { ...s.canvas }, elements: s.elements.map(cloneElement) }
 }
 
+const isDarkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+
 function initialScene(): Scene {
   return {
-    canvas: { w: 64, h: 64, background: null },
+    canvas: { w: 64, h: 64, background: isDarkMode ? '#1e1e1e' : null },
     elements: [],
   }
 }
@@ -161,7 +163,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   draft: null,
   selection: [],
   tool: 'brush',
-  options: { ...DEFAULT_TOOL_OPTIONS, ...(savedSettings?.options ?? {}) },
+  options: {
+    ...DEFAULT_TOOL_OPTIONS,
+    stroke: isDarkMode ? '#ffffff' : '#1e1e1e',
+    ...(savedSettings?.options ?? {}),
+  },
   eraserMode: 'pixel',
   viewport: { zoom: 8, panX: 0, panY: 0 },
   showGrid: true,

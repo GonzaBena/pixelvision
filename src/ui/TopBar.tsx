@@ -8,10 +8,8 @@ import {
   IconHelp,
   IconLayers,
   IconMenu,
-  IconRedo,
   IconSliders,
   IconTrash,
-  IconUndo,
   IconUpload,
 } from './Icons'
 
@@ -31,9 +29,6 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
   const [openError, setOpenError] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-
-  const canUndo = useEditor((s) => s.past.length > 0)
-  const canRedo = useEditor((s) => s.future.length > 0)
   const showGrid = useEditor((s) => s.showGrid)
   const tileGrid = useEditor((s) => s.showTileGrid)
   const version = useEditor((s) => s.version)
@@ -204,28 +199,6 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
         />
       </div>
 
-      <div className="island topbar__group">
-        <button
-          type="button"
-          className="btn btn--icon"
-          disabled={!canUndo}
-          onClick={() => st.undo()}
-          title="Deshacer — Ctrl+Z"
-          aria-label="Deshacer"
-        >
-          <IconUndo />
-        </button>
-        <button
-          type="button"
-          className="btn btn--icon"
-          disabled={!canRedo}
-          onClick={() => st.redo()}
-          title="Rehacer — Ctrl+Shift+Z"
-          aria-label="Rehacer"
-        >
-          <IconRedo />
-        </button>
-      </div>
 
       <div className="island topbar__group">
         <button

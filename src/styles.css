@@ -157,7 +157,7 @@ textarea {
 
 .toolbar {
   position: absolute;
-  top: 72px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -191,13 +191,18 @@ textarea {
   transition: background 0.12s;
 }
 
-.tool:hover {
+.tool:hover:not(:disabled) {
   background: var(--accent-soft);
 }
 
 .tool--active {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.tool:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .tool__key {
@@ -213,16 +218,26 @@ textarea {
 
 .panel {
   position: absolute;
-  top: 116px;
+  top: 68px;
   left: 12px;
   width: 236px;
-  max-height: calc(100% - 190px);
+  max-height: calc(100% - 142px);
   overflow-y: auto;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-10px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.panel--open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
 }
 
 .panel__sep {
@@ -589,10 +604,10 @@ textarea {
 
 .layers {
   position: absolute;
-  top: 116px;
+  top: 68px;
   right: 12px;
   width: 244px;
-  max-height: calc(100% - 190px);
+  max-height: calc(100% - 142px);
   display: flex;
   flex-direction: column;
   padding: 12px;
@@ -899,10 +914,13 @@ kbd {
     transform: translateY(100%);
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+    opacity: 1;
+    pointer-events: none;
   }
 
   .panel--open {
     transform: translateY(0);
+    pointer-events: auto;
   }
 
   .panel__head-mobile {

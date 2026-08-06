@@ -23,7 +23,7 @@ function isTyping(target: EventTarget | null): boolean {
 
 export default function App() {
   const [layersOpen, setLayersOpen] = useState(false)
-  const [propsOpen, setPropsOpen] = useState(false)
+  const [propsOpen, setPropsOpen] = useState(window.innerWidth > 768)
   const [helpOpen, setHelpOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 

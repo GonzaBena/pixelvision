@@ -12,10 +12,12 @@ import {
   IconImage,
   IconLine,
   IconRect,
+  IconRedo,
   IconSelect,
   IconStar,
   IconText,
   IconTriangle,
+  IconUndo,
 } from './Icons'
 
 interface ToolDef {
@@ -63,9 +65,36 @@ interface Props {
 export function Toolbar({ onPickImage }: Props) {
   const tool = useEditor((s) => s.tool)
   const setTool = useEditor((s) => s.setTool)
+  const canUndo = useEditor((s) => s.past.length > 0)
+  const canRedo = useEditor((s) => s.future.length > 0)
+  const undo = useEditor((s) => s.undo)
+  const redo = useEditor((s) => s.redo)
 
   return (
     <div className="island toolbar" role="toolbar" aria-label="Herramientas">
+      <div className="toolbar__group">
+        <button
+          type="button"
+          className="tool"
+          disabled={!canUndo}
+          onClick={undo}
+          title="Deshacer — Ctrl+Z"
+          aria-label="Deshacer"
+        >
+          <IconUndo />
+        </button>
+        <button
+          type="button"
+          className="tool"
+          disabled={!canRedo}
+          onClick={redo}
+          title="Rehacer — Ctrl+Shift+Z"
+          aria-label="Rehacer"
+        >
+          <IconRedo />
+        </button>
+      </div>
+
       {TOOLS.map((group, gi) => (
         <div className="toolbar__group" key={gi}>
           {group.map((t) => (
