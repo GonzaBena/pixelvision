@@ -162,7 +162,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   selection: [],
   tool: 'brush',
   options: { ...DEFAULT_TOOL_OPTIONS, ...(savedSettings?.options ?? {}) },
-  eraserMode: 'object',
+  eraserMode: 'pixel',
   viewport: { zoom: 8, panX: 0, panY: 0 },
   showGrid: true,
   showTileGrid: 0,

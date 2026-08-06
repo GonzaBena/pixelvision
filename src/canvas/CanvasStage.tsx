@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FreedrawElement, ImageElement, PVElement, Rect } from '../core/types'
-import { cloneBuffer, expandBuffer, parseColor, rgbaToHex } from '../core/pixels'
+import type { FreedrawElement, ImageElement, PixelBuffer, PVElement, Rect } from '../core/types'
+import { cloneBuffer, createBuffer, expandBuffer, parseColor, rgbaToHex } from '../core/pixels'
 import { renderScene } from '../core/render/renderScene'
 import { hitTestWithSlop } from '../core/render/hitTest'
 import { elementBounds, elementsInRect, unionBounds } from '../core/render/hitTest'
@@ -47,16 +47,65 @@ import { TextOverlay } from './TextOverlay'
 
 type Interaction =
   | { kind: 'none' }
-  | { kind: 'pan'; cssX: number; cssY: number; panX: number; panY: number }
-  | { kind: 'paint'; id: string; lastX: number; lastY: number; erase: boolean }
-  | { kind: 'eraseObjects' }
-  | { kind: 'shape'; sx: number; sy: number }
-  | { kind: 'move'; orig: Array<{ id: string; x: number; y: number }>; sx: number; sy: number }
-  | { kind: 'resize'; handle: HandleId; from: Rect; orig: PVElement[] }
-  | { kind: 'marquee'; sx: number; sy: number }
+  | { kind: 'pan'; pointerId: number; cssX: number; cssY: number; panX: number; panY: number }
+  | {
+      kind: 'paint'
+      pointerId: number
+      id: string
+      sx: number
+      sy: number
+      lastX: number
+      lastY: number
+      erase: boolean
+      startTime: number
+      moveCount: number
+      pushedHistory: boolean
+      baseBuf: PixelBuffer
+      baseX: number
+      baseY: number
+      shiftActive: boolean
+    }
+  | { kind: 'eraseObjects'; pointerId: number; startTime: number; moveCount: number; pushedHistory: boolean }
+  | { kind: 'shape'; pointerId: number; sx: number; sy: number; startTime: number; pushedHistory: boolean }
+  | {
+      kind: 'move'
+      pointerId: number
+      orig: Array<{ id: string; x: number; y: number }>
+      sx: number
+      sy: number
+      startTime: number
+      pushedHistory: boolean
+    }
+  | {
+      kind: 'resize'
+      pointerId: number
+      handle: HandleId
+      from: Rect
+      orig: PVElement[]
+      startTime: number
+      pushedHistory: boolean
+    }
+  | { kind: 'marquee'; pointerId: number; sx: number; sy: number }
 
 const SHAPE_TOOLS = new Set(['rect', 'ellipse', 'triangle', 'diamond', 'star', 'hexagon'])
 const LINE_TOOLS = new Set(['line', 'arrow'])
+
+function copyBufferInto(dst: PixelBuffer, src: PixelBuffer, ox: number, oy: number): void {
+  const x0 = Math.max(0, -ox)
+  const y0 = Math.max(0, -oy)
+  const x1 = Math.min(src.w, dst.w - ox)
+  const y1 = Math.min(src.h, dst.h - oy)
+  for (let y = y0; y < y1; y++) {
+    let si = (y * src.w + x0) * 4
+    let di = ((y + oy) * dst.w + (x0 + ox)) * 4
+    for (let x = x0; x < x1; x++, si += 4, di += 4) {
+      dst.data[di] = src.data[si]
+      dst.data[di + 1] = src.data[si + 1]
+      dst.data[di + 2] = src.data[si + 2]
+      dst.data[di + 3] = src.data[si + 3]
+    }
+  }
+}
 
 export function CanvasStage() {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -74,6 +123,7 @@ export function CanvasStage() {
 
   /** Punteros táctiles activos para soporte de gestos multitáctiles. */
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const isMultiTouchGesture = useRef(false)
   const pinchState = useRef<{
     dist: number
     centerCss: { x: number; y: number }
@@ -110,6 +160,36 @@ export function CanvasStage() {
     const st = useEditor.getState()
     useEditor.setState({ viewport: fitToView(st.scene.canvas.w, st.scene.canvas.h, size.w, size.h) })
   }, [size])
+
+  // Prevenir zoom nativo del navegador en dispositivos móviles durante gestos multitáctiles
+  useEffect(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+
+    const preventDefaultMultiTouch = (e: TouchEvent) => {
+      if (e.touches.length >= 2 && e.cancelable) {
+        e.preventDefault()
+      }
+    }
+
+    const preventGesture = (e: Event) => {
+      if (e.cancelable) e.preventDefault()
+    }
+
+    wrap.addEventListener('touchstart', preventDefaultMultiTouch, { passive: false })
+    wrap.addEventListener('touchmove', preventDefaultMultiTouch, { passive: false })
+    wrap.addEventListener('gesturestart', preventGesture, { passive: false })
+    wrap.addEventListener('gesturechange', preventGesture, { passive: false })
+    wrap.addEventListener('gestureend', preventGesture, { passive: false })
+
+    return () => {
+      wrap.removeEventListener('touchstart', preventDefaultMultiTouch)
+      wrap.removeEventListener('touchmove', preventDefaultMultiTouch)
+      wrap.removeEventListener('gesturestart', preventGesture)
+      wrap.removeEventListener('gesturechange', preventGesture)
+      wrap.removeEventListener('gestureend', preventGesture)
+    }
+  }, [])
 
   // --- Bucle de dibujo --------------------------------------------------------
   const draw = useCallback(() => {
@@ -170,7 +250,7 @@ export function CanvasStage() {
     const c = cursorPx.current
     const showCursor =
       c && c.x >= 0 && c.y >= 0 && c.x < cw && c.y < ch && interaction.current.kind !== 'pan'
-    if (showCursor && (st.tool === 'brush' || (st.tool === 'eraser' && st.eraserMode === 'pixel'))) {
+    if (showCursor && (st.tool === 'brush' || st.tool === 'eraser')) {
       // El borrador no tiene color que previsualizar, y durante el trazo los
       // píxeles reales ya están pintados: en ambos casos va sólo el contorno.
       const preview =
@@ -227,8 +307,12 @@ export function CanvasStage() {
     const it = interaction.current
     switch (it.kind) {
       case 'paint':
+        it.sx += dx
+        it.sy += dy
         it.lastX += dx
         it.lastY += dy
+        it.baseX += dx
+        it.baseY += dy
         break
       case 'shape':
       case 'marquee':
@@ -287,7 +371,7 @@ export function CanvasStage() {
     fd.y -= grown.dy
   }
 
-  const beginPaint = (st: EditorState, px: number, py: number, erase: boolean) => {
+  const beginPaint = (st: EditorState, px: number, py: number, erase: boolean, pointerId: number) => {
     if (erase) {
       const hit = hitTestWithSlop(st.scene, px, py, 0)
       // Se empuja historial recién cuando hay algo que borrar: si no, cada clic
@@ -305,7 +389,23 @@ export function CanvasStage() {
       const fd = target as FreedrawElement
       stampAt(fd.buf, px - fd.x, py - fd.y, st.options.brushSize, st.options.brushShape, [0, 0, 0, 0], true)
       st.touch(fd.id)
-      interaction.current = { kind: 'paint', id: fd.id, lastX: px, lastY: py, erase: true }
+      interaction.current = {
+        kind: 'paint',
+        pointerId,
+        id: fd.id,
+        sx: px,
+        sy: py,
+        lastX: px,
+        lastY: py,
+        erase: true,
+        startTime: Date.now(),
+        moveCount: 0,
+        pushedHistory: true,
+        baseBuf: cloneBuffer(fd.buf),
+        baseX: fd.x,
+        baseY: fd.y,
+        shiftActive: false,
+      }
       return
     }
 
@@ -321,7 +421,23 @@ export function CanvasStage() {
     stampAt(fd.buf, px - fd.x, py - fd.y, st.options.brushSize, st.options.brushShape, color)
     st.touch(fd.id)
     st.pushRecentColor(st.options.stroke)
-    interaction.current = { kind: 'paint', id: fd.id, lastX: px, lastY: py, erase: false }
+    interaction.current = {
+      kind: 'paint',
+      pointerId,
+      id: fd.id,
+      sx: px,
+      sy: py,
+      lastX: px,
+      lastY: py,
+      erase: false,
+      startTime: Date.now(),
+      moveCount: 0,
+      pushedHistory: true,
+      baseBuf: cloneBuffer(fd.buf),
+      baseX: fd.x,
+      baseY: fd.y,
+      shiftActive: false,
+    }
   }
 
   const doBucket = (st: EditorState, px: number, py: number) => {
@@ -383,20 +499,42 @@ export function CanvasStage() {
   // --- Eventos de puntero -----------------------------------------------------
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button === 2) return
     const st = useEditor.getState()
     const css = localCss(e)
     const p = toPixel(e)
+
+    if (e.button === 2) {
+      if (st.tool === 'brush') {
+        ;(e.target as Element).setPointerCapture(e.pointerId)
+        beginPaint(st, p.x, p.y, true, e.pointerId)
+      }
+      return
+    }
 
     if (e.pointerType === 'touch') {
       activePointers.current.set(e.pointerId, css)
     }
 
     if (activePointers.current.size >= 2) {
-      // Al detectar 2 o más dedos, cancelar cualquier trazo/figura parcial para evitar trazos fantasma.
-      if (st.draft) st.setDraft(null)
-      marquee.current = null
-      interaction.current = { kind: 'none' }
+      isMultiTouchGesture.current = true
+
+      // Al detectar 2 o más dedos, deshacer cualquier trazo o figura inicial
+      // provocado por el primer dedo al apoyar la mano para hacer zoom/paneo.
+      const it = interaction.current
+      if (it.kind !== 'none') {
+        if (st.draft) st.setDraft(null)
+        marquee.current = null
+
+        const isRecent =
+          'startTime' in it &&
+          (Date.now() - it.startTime < 400 || ('moveCount' in it && it.moveCount <= 1))
+
+        if ('pushedHistory' in it && it.pushedHistory && isRecent) {
+          st.undo()
+        }
+        strokeGroup.current = null
+        interaction.current = { kind: 'none' }
+      }
 
       const pointers = Array.from(activePointers.current.values())
       const p1 = pointers[0]
@@ -414,6 +552,11 @@ export function CanvasStage() {
       return
     }
 
+    // Si estamos en medio de un gesto multitáctil, no permitir iniciar interacciones simples.
+    if (isMultiTouchGesture.current) {
+      return
+    }
+
     if (st.tool === 'text') {
       // El texto no arrastra, así que no necesita capturar el puntero; y hay que
       // frenar el foco por defecto para que el clic no se lo quite al campo que
@@ -426,6 +569,7 @@ export function CanvasStage() {
     if (e.button === 1 || spaceDown.current || st.tool === 'hand') {
       interaction.current = {
         kind: 'pan',
+        pointerId: e.pointerId,
         cssX: css.x,
         cssY: css.y,
         panX: st.viewport.panX,
@@ -436,22 +580,32 @@ export function CanvasStage() {
 
     switch (st.tool) {
       case 'brush':
-        beginPaint(st, p.x, p.y, false)
+        beginPaint(st, p.x, p.y, false, e.pointerId)
         return
 
-      case 'eraser':
-        if (st.eraserMode === 'pixel') {
-          beginPaint(st, p.x, p.y, true)
+      case 'eraser': {
+        const isObjectMode = e.shiftKey ? st.eraserMode === 'pixel' : st.eraserMode === 'object'
+        if (!isObjectMode) {
+          beginPaint(st, p.x, p.y, true, e.pointerId)
         } else {
           const hit = hitTestWithSlop(st.scene, p.x, p.y, 1)
+          let pushed = false
           if (hit) {
             st.pushHistory()
             st.removeElements([hit.id])
+            pushed = true
           }
           strokeGroup.current = null
-          interaction.current = { kind: 'eraseObjects' }
+          interaction.current = {
+            kind: 'eraseObjects',
+            pointerId: e.pointerId,
+            startTime: Date.now(),
+            moveCount: 0,
+            pushedHistory: pushed,
+          }
         }
         return
+      }
 
       case 'bucket':
         doBucket(st, p.x, p.y)
@@ -489,10 +643,19 @@ export function CanvasStage() {
           const dy = css.y * t.dpr
           for (const id of HANDLE_IDS) {
             if (Math.abs(pos[id].x - dx) <= r && Math.abs(pos[id].y - dy) <= r) {
+              st.pushHistory()
               const orig = st.scene.elements
                 .filter((el) => st.selection.includes(el.id))
                 .map((el) => (el.type === 'freedraw' ? { ...el, buf: cloneBuffer(el.buf) } : { ...el }))
-              interaction.current = { kind: 'resize', handle: id, from: b, orig }
+              interaction.current = {
+                kind: 'resize',
+                pointerId: e.pointerId,
+                handle: id,
+                from: b,
+                orig,
+                startTime: Date.now(),
+                pushedHistory: true,
+              }
               return
             }
           }
@@ -512,12 +675,20 @@ export function CanvasStage() {
           const orig = st.scene.elements
             .filter((el) => sel.includes(el.id))
             .map((el) => ({ id: el.id, x: el.x, y: el.y }))
-          interaction.current = { kind: 'move', orig, sx: p.x, sy: p.y }
+          interaction.current = {
+            kind: 'move',
+            pointerId: e.pointerId,
+            orig,
+            sx: p.x,
+            sy: p.y,
+            startTime: Date.now(),
+            pushedHistory: true,
+          }
           return
         }
         if (!e.shiftKey) st.setSelection([])
         marquee.current = { x: p.x, y: p.y, w: 0, h: 0 }
-        interaction.current = { kind: 'marquee', sx: p.x, sy: p.y }
+        interaction.current = { kind: 'marquee', pointerId: e.pointerId, sx: p.x, sy: p.y }
         return
       }
 
@@ -535,7 +706,14 @@ export function CanvasStage() {
               ? createLine(p.x, p.y, 0, 0, { ...st.options, arrow: st.tool === 'arrow' })
               : makeShape(st, box)
           if (draft) st.setDraft(draft)
-          interaction.current = { kind: 'shape', sx: p.x, sy: p.y }
+          interaction.current = {
+            kind: 'shape',
+            pointerId: e.pointerId,
+            sx: p.x,
+            sy: p.y,
+            startTime: Date.now(),
+            pushedHistory: true,
+          }
           strokeGroup.current = null
         }
     }
@@ -549,42 +727,48 @@ export function CanvasStage() {
       activePointers.current.set(e.pointerId, css)
     }
 
-    if (activePointers.current.size >= 2 && pinchState.current) {
-      const pointers = Array.from(activePointers.current.values())
-      const p1 = pointers[0]
-      const p2 = pointers[1]
-      const curDist = Math.hypot(p2.x - p1.x, p2.y - p1.y)
-      const curCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
+    if (isMultiTouchGesture.current) {
+      if (activePointers.current.size >= 2 && pinchState.current) {
+        const pointers = Array.from(activePointers.current.values())
+        const p1 = pointers[0]
+        const p2 = pointers[1]
+        const curDist = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+        const curCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
 
-      const scale = pinchState.current.dist > 0 ? curDist / pinchState.current.dist : 1
-      const rawZoom = pinchState.current.zoom * scale
-      const targetZoom = Math.max(0.1, Math.min(64, rawZoom))
+        const scale = pinchState.current.dist > 0 ? curDist / pinchState.current.dist : 1
+        const rawZoom = pinchState.current.zoom * scale
+        const targetZoom = Math.max(0.1, Math.min(64, rawZoom))
 
-      const initPanX = pinchState.current.panX
-      const initPanY = pinchState.current.panY
-      const initZoom = pinchState.current.zoom
-      const centerInit = pinchState.current.centerCss
+        const initPanX = pinchState.current.panX
+        const initPanY = pinchState.current.panY
+        const initZoom = pinchState.current.zoom
+        const centerInit = pinchState.current.centerCss
 
-      const canvasX = (centerInit.x - initPanX) / initZoom
-      const canvasY = (centerInit.y - initPanY) / initZoom
+        const canvasX = (centerInit.x - initPanX) / initZoom
+        const canvasY = (centerInit.y - initPanY) / initZoom
 
-      st.setViewport({
-        zoom: targetZoom,
-        panX: curCenter.x - canvasX * targetZoom,
-        panY: curCenter.y - canvasY * targetZoom,
-      })
-      requestDraw.current()
+        st.setViewport({
+          zoom: targetZoom,
+          panX: curCenter.x - canvasX * targetZoom,
+          panY: curCenter.y - canvasY * targetZoom,
+        })
+        requestDraw.current()
+      }
       return
     }
 
     if (pinchState.current) return
+
+    const it = interaction.current
+    if (it.kind !== 'none' && 'pointerId' in it && it.pointerId !== e.pointerId) {
+      return
+    }
 
     const p = toPixel(e)
     const prev = cursorPx.current
     cursorPx.current = p
     if (!prev || prev.x !== p.x || prev.y !== p.y) requestDraw.current()
 
-    const it = interaction.current
     switch (it.kind) {
       case 'pan': {
         st.setViewport({
@@ -595,26 +779,113 @@ export function CanvasStage() {
       }
 
       case 'paint': {
+        it.moveCount++
         const el = st.scene.elements.find((x) => x.id === it.id)
         if (!el || el.type !== 'freedraw') return
+
+        if (e.shiftKey) {
+          if (!it.shiftActive) {
+            it.shiftActive = true
+            it.sx = it.lastX
+            it.sy = it.lastY
+            it.baseBuf = cloneBuffer(el.buf)
+            it.baseX = el.x
+            it.baseY = el.y
+          }
+
+          let px = p.x
+          let py = p.y
+          const dx = px - it.sx
+          const dy = py - it.sy
+          if (dx !== 0 || dy !== 0) {
+            const ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
+            const len = Math.hypot(dx, dy)
+            px = it.sx + Math.round(Math.cos(ang) * len)
+            py = it.sy + Math.round(Math.sin(ang) * len)
+          }
+
+          const off = stampOffset(st.options.brushSize)
+          const n = Math.max(1, Math.floor(st.options.brushSize))
+
+          if (!it.erase) {
+            const segment = {
+              x: Math.min(it.sx, px) - off,
+              y: Math.min(it.sy, py) - off,
+              w: Math.abs(px - it.sx) + n,
+              h: Math.abs(py - it.sy) + n,
+            }
+            const g = st.growToFit(segment)
+            const pt = { x: px, y: py }
+            shiftDrag(g.dx, g.dy, pt)
+            px = pt.x
+            py = pt.y
+          }
+
+          // Caja delimitadora que contiene al búfer base y a la nueva línea recta
+          const minX = Math.min(it.baseX, Math.min(it.sx, px) - off)
+          const maxX = Math.max(it.baseX + it.baseBuf.w - 1, Math.max(it.sx, px) + off)
+          const minY = Math.min(it.baseY, Math.min(it.sy, py) - off)
+          const maxY = Math.max(it.baseY + it.baseBuf.h - 1, Math.max(it.sy, py) + off)
+
+          const newW = Math.max(1, maxX - minX + 1)
+          const newH = Math.max(1, maxY - minY + 1)
+
+          // Reconstruir búfer limpio y copiar it.baseBuf en su posición original
+          el.x = minX
+          el.y = minY
+          el.buf = createBuffer(newW, newH)
+          copyBufferInto(el.buf, it.baseBuf, it.baseX - el.x, it.baseY - el.y)
+
+          // Trazar únicamente la línea recta actual
+          const color = it.erase ? ([0, 0, 0, 0] as const) : parseColor(st.options.stroke)
+          strokeLine(
+            el.buf,
+            it.sx - el.x,
+            it.sy - el.y,
+            px - el.x,
+            py - el.y,
+            color as [number, number, number, number],
+            st.options.brushSize,
+            st.options.brushShape,
+            it.erase,
+          )
+          it.lastX = px
+          it.lastY = py
+          st.touch(el.id)
+          return
+        }
+
+        // Si soltó Shift, fijar el trazo hasta la posición actual como nuevo estado base
+        if (it.shiftActive) {
+          it.shiftActive = false
+          it.baseBuf = cloneBuffer(el.buf)
+          it.baseX = el.x
+          it.baseY = el.y
+          it.sx = it.lastX
+          it.sy = it.lastY
+        }
+
+        let px = p.x
+        let py = p.y
         if (!it.erase) {
-          // No tiene sentido agrandar nada para borrar: fuera del búfer no hay
-          // nada que borrar.
           const off = stampOffset(st.options.brushSize)
           const n = Math.max(1, Math.floor(st.options.brushSize))
           const segment = {
-            x: Math.min(it.lastX, p.x) - off,
-            y: Math.min(it.lastY, p.y) - off,
-            w: Math.abs(p.x - it.lastX) + n,
-            h: Math.abs(p.y - it.lastY) + n,
+            x: Math.min(it.lastX, px) - off,
+            y: Math.min(it.lastY, py) - off,
+            w: Math.abs(px - it.lastX) + n,
+            h: Math.abs(py - it.lastY) + n,
           }
           const g = st.growToFit(segment)
-          shiftDrag(g.dx, g.dy, p)
+          const pt = { x: px, y: py }
+          shiftDrag(g.dx, g.dy, pt)
+          px = pt.x
+          py = pt.y
           ensureFreedrawCovers(el, {
-            x: Math.min(it.lastX, p.x) - el.x - off,
-            y: Math.min(it.lastY, p.y) - el.y - off,
-            w: Math.abs(p.x - it.lastX) + n,
-            h: Math.abs(p.y - it.lastY) + n,
+            x: Math.min(it.lastX, px) - el.x - off,
+            y: Math.min(it.lastY, py) - el.y - off,
+            w: Math.abs(px - it.lastX) + n,
+            h: Math.abs(py - it.lastY) + n,
           })
         }
         const color = it.erase ? ([0, 0, 0, 0] as const) : parseColor(st.options.stroke)
@@ -622,20 +893,21 @@ export function CanvasStage() {
           el.buf,
           it.lastX - el.x,
           it.lastY - el.y,
-          p.x - el.x,
-          p.y - el.y,
+          px - el.x,
+          py - el.y,
           color as [number, number, number, number],
           st.options.brushSize,
           st.options.brushShape,
           it.erase,
         )
-        it.lastX = p.x
-        it.lastY = p.y
+        it.lastX = px
+        it.lastY = py
         st.touch(el.id)
         return
       }
 
       case 'eraseObjects': {
+        it.moveCount++
         const hit = hitTestWithSlop(st.scene, p.x, p.y, 1)
         if (hit) st.removeElements([hit.id])
         return
@@ -730,10 +1002,16 @@ export function CanvasStage() {
       if (activePointers.current.size > 0) {
         return
       }
+      isMultiTouchGesture.current = false
     }
 
     const st = useEditor.getState()
     const it = interaction.current
+
+    if (it.kind !== 'none' && 'pointerId' in it && it.pointerId !== e.pointerId && e.pointerType === 'touch') {
+      return
+    }
+
     if (it.kind === 'shape' && st.draft) {
       const draft = st.draft
       // El historial ya se empujó al bajar el puntero (ver onPointerDown), así
