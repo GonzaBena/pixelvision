@@ -1134,6 +1134,37 @@ export function CanvasStage() {
     strokeGroup.current = null
   }, [])
 
+  const importUrl = useCallback(async (url: string) => {
+    try {
+      let blob: Blob
+      if (url.startsWith('data:')) {
+        const response = await fetch(url)
+        blob = await response.blob()
+      } else {
+        try {
+          // Intentamos cargar la imagen directamente primero
+          const response = await fetch(url)
+          blob = await response.blob()
+        } catch (err) {
+          // Si falla (por ejemplo por CORS), intentamos con un proxy de CORS público
+          console.warn('Fallo al descargar directamente por CORS, intentando proxy...', err)
+          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`
+          const response = await fetch(proxyUrl)
+          blob = await response.blob()
+        }
+      }
+
+      if (!blob.type.startsWith('image/')) {
+        throw new Error('El archivo descargado no es una imagen válida.')
+      }
+
+      await importBlob(blob)
+    } catch (error) {
+      console.error('Error al importar la imagen externa:', error)
+      alert('No se pudo cargar la imagen externa debido a restricciones de seguridad (CORS) del sitio de origen o un enlace inválido.')
+    }
+  }, [importBlob])
+
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const item = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith('image/'))
@@ -1150,8 +1181,46 @@ export function CanvasStage() {
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDropping(false)
+
+    // 1. Intentar obtener archivos locales primero
     const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith('image/'))
-    if (file) void importBlob(file)
+    if (file) {
+      void importBlob(file)
+      return
+    }
+
+    // 2. Si no hay archivos, buscar si arrastró un URL de imagen externa
+    let imageUrl = e.dataTransfer.getData('text/uri-list')
+    if (imageUrl) {
+      const urls = imageUrl.split('\n').map((u) => u.trim()).filter((u) => u && !u.startsWith('#'))
+      if (urls.length > 0) {
+        imageUrl = urls[0]
+      } else {
+        imageUrl = ''
+      }
+    }
+
+    if (!imageUrl) {
+      const html = e.dataTransfer.getData('text/html')
+      if (html) {
+        const match = html.match(/<img[^>]+src=["']([^"']+)["']/i)
+        if (match) {
+          imageUrl = match[1]
+        }
+      }
+    }
+
+    if (!imageUrl) {
+      imageUrl = e.dataTransfer.getData('URL')
+    }
+
+    if (!imageUrl) {
+      imageUrl = e.dataTransfer.getData('text/plain')
+    }
+
+    if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('data:'))) {
+      void importUrl(imageUrl)
+    }
   }
 
   const tool = useEditor((s) => s.tool)
