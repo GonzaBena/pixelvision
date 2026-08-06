@@ -85,7 +85,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
           type="button"
           className="btn btn--icon"
           onClick={() => setMenuOpen((v) => !v)}
-          title="Menú"
+          data-tooltip="Menú"
           aria-label="Menú"
           aria-expanded={menuOpen}
         >
@@ -205,7 +205,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
           type="button"
           className={`btn btn--icon${showGrid ? ' btn--on' : ''}`}
           onClick={() => st.setShowGrid(!showGrid)}
-          title="Grilla de píxeles"
+          data-tooltip="Grilla de píxeles"
           aria-label="Grilla de píxeles"
           aria-pressed={showGrid}
         >
@@ -227,7 +227,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
           type="button"
           className={`btn btn--icon${propsOpen ? ' btn--on' : ''}`}
           onClick={onToggleProps}
-          title="Propiedades"
+          data-tooltip="Propiedades"
           aria-label="Propiedades"
           aria-pressed={propsOpen}
         >
@@ -237,7 +237,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
           type="button"
           className={`btn btn--icon${layersOpen ? ' btn--on' : ''}`}
           onClick={onToggleLayers}
-          title="Capas"
+          data-tooltip="Capas"
           aria-label="Capas"
           aria-pressed={layersOpen}
         >
@@ -247,7 +247,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
           type="button"
           className="btn btn--icon"
           onClick={onToggleHelp}
-          title="Atajos de teclado"
+          data-tooltip="Atajos de teclado"
           aria-label="Atajos de teclado"
         >
           <IconHelp />

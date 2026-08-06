@@ -1,4 +1,5 @@
 import { useEditor, type ToolId } from '../state/store'
+import { fitToView } from '../canvas/viewport'
 import {
   IconArrow,
   IconBrush,
@@ -7,6 +8,7 @@ import {
   IconDropper,
   IconEllipse,
   IconEraser,
+  IconFit,
   IconHand,
   IconHexagon,
   IconImage,
@@ -69,6 +71,15 @@ export function Toolbar({ onPickImage }: Props) {
   const canRedo = useEditor((s) => s.future.length > 0)
   const undo = useEditor((s) => s.undo)
   const redo = useEditor((s) => s.redo)
+  const setViewport = useEditor((s) => s.setViewport)
+
+  const handleFit = () => {
+    const stage = document.querySelector('.stage')
+    const rect = stage?.getBoundingClientRect()
+    if (!rect) return
+    const st = useEditor.getState()
+    setViewport(fitToView(st.scene.canvas.w, st.scene.canvas.h, rect.width, rect.height))
+  }
 
   return (
     <div className="island toolbar" role="toolbar" aria-label="Herramientas">
@@ -78,7 +89,7 @@ export function Toolbar({ onPickImage }: Props) {
           className="tool"
           disabled={!canUndo}
           onClick={undo}
-          title="Deshacer — Ctrl+Z"
+          data-tooltip="Deshacer — Ctrl+Z"
           aria-label="Deshacer"
         >
           <IconUndo />
@@ -88,7 +99,7 @@ export function Toolbar({ onPickImage }: Props) {
           className="tool"
           disabled={!canRedo}
           onClick={redo}
-          title="Rehacer — Ctrl+Shift+Z"
+          data-tooltip="Rehacer — Ctrl+Shift+Z"
           aria-label="Rehacer"
         >
           <IconRedo />
@@ -103,7 +114,7 @@ export function Toolbar({ onPickImage }: Props) {
               type="button"
               className={`tool${tool === t.id ? ' tool--active' : ''}`}
               onClick={() => setTool(t.id)}
-              title={`${t.label} — ${t.key}`}
+              data-tooltip={`${t.label} — ${t.key}`}
               aria-label={t.label}
               aria-pressed={tool === t.id}
             >
@@ -118,10 +129,19 @@ export function Toolbar({ onPickImage }: Props) {
           type="button"
           className="tool"
           onClick={onPickImage}
-          title="Insertar imagen — también podés arrastrarla o pegarla"
+          data-tooltip="Insertar imagen — también podés arrastrarla o pegarla"
           aria-label="Insertar imagen"
         >
           <IconImage />
+        </button>
+        <button
+          type="button"
+          className="tool"
+          onClick={handleFit}
+          data-tooltip="Ajustar lienzo a la pantalla"
+          aria-label="Ajustar a la vista"
+        >
+          <IconFit />
         </button>
       </div>
     </div>

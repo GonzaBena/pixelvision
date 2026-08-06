@@ -21,11 +21,32 @@ function isTyping(target: EventTarget | null): boolean {
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
 }
 
+const TOOL_INFO: Record<string, { title: string; desc: string }> = {
+  select: { title: 'Seleccionar', desc: 'Arrastra y escala figuras. Doble clic para editar texto.' },
+  hand: { title: 'Mano', desc: 'Arrastra el lienzo para moverte.' },
+  brush: { title: 'Pincel', desc: 'Dibuja trazos libres. Clic derecho borra.' },
+  eraser: { title: 'Borrador', desc: 'Borra trazos o figuras (Shift alterna el modo de borrado).' },
+  bucket: { title: 'Balde', desc: 'Rellena con color continuo áreas conectadas.' },
+  eyedropper: { title: 'Cuentagotas', desc: 'Toca el lienzo para absorber un color.' },
+  rect: { title: 'Rectángulo', desc: 'Dibuja rectángulos (Shift para cuadrado, Alt desde el centro).' },
+  ellipse: { title: 'Elipse', desc: 'Dibuja elipses (Shift para círculo, Alt desde el centro).' },
+  triangle: { title: 'Triángulo', desc: 'Dibuja triángulos (Shift para equilátero).' },
+  diamond: { title: 'Rombo', desc: 'Dibuja rombos simétricos.' },
+  star: { title: 'Estrella', desc: 'Dibuja estrellas de 5 puntas.' },
+  hexagon: { title: 'Hexágono', desc: 'Dibuja hexágonos regulares.' },
+  line: { title: 'Línea', desc: 'Dibuja líneas rectas (Shift para ángulos de 45°).' },
+  arrow: { title: 'Flecha', desc: 'Dibuja flechas indicadoras (Shift para ángulos de 45°).' },
+  text: { title: 'Texto', desc: 'Toca el lienzo para escribir texto retro.' },
+}
+
 export default function App() {
   const [layersOpen, setLayersOpen] = useState(false)
   const [propsOpen, setPropsOpen] = useState(window.innerWidth > 768)
   const [helpOpen, setHelpOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const activeTool = useEditor((s) => s.tool)
+  const info = TOOL_INFO[activeTool]
 
   // --- Restauración del autoguardado -----------------------------------------
   const restored = useRef(false)
@@ -187,8 +208,22 @@ export default function App() {
         onToggleHelp={() => setHelpOpen((v) => !v)}
       />
       <Toolbar onPickImage={() => fileRef.current?.click()} />
+      {(propsOpen || layersOpen) && (
+        <div
+          className="mobile-backdrop"
+          onClick={() => {
+            setPropsOpen(false)
+            setLayersOpen(false)
+          }}
+        />
+      )}
+      {info && (
+        <div className="island tool-help-pill">
+          <strong>{info.title}:</strong> <span>{info.desc}</span>
+        </div>
+      )}
       <PropertiesPanel open={propsOpen} onClose={() => setPropsOpen(false)} />
-      {layersOpen && <LayersPanel onClose={() => setLayersOpen(false)} />}
+      <LayersPanel open={layersOpen} onClose={() => setLayersOpen(false)} />
       <ZoomControls />
       {helpOpen && <ShortcutsHelp onClose={() => setHelpOpen(false)} />}
 

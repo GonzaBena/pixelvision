@@ -458,7 +458,8 @@ function SelectionActions() {
         <button
           type="button"
           className="btn btn--icon"
-          title="Voltear horizontal"
+          data-tooltip="Voltear horizontal"
+          data-tooltip-dir="up"
           onClick={() => each((el) => st.updateElement(el.id, flipElement(el, 'x')))}
         >
           <IconFlipH />
@@ -466,7 +467,8 @@ function SelectionActions() {
         <button
           type="button"
           className="btn btn--icon"
-          title="Voltear vertical"
+          data-tooltip="Voltear vertical"
+          data-tooltip-dir="up"
           onClick={() => each((el) => st.updateElement(el.id, flipElement(el, 'y')))}
         >
           <IconFlipV />
@@ -474,7 +476,8 @@ function SelectionActions() {
         <button
           type="button"
           className="btn btn--icon"
-          title="Rotar 90°"
+          data-tooltip="Rotar 90°"
+          data-tooltip-dir="up"
           onClick={() => each((el) => st.updateElement(el.id, rotateElement(el, 1)))}
         >
           <IconRotate />
@@ -482,7 +485,8 @@ function SelectionActions() {
         <button
           type="button"
           className="btn btn--icon"
-          title="Traer al frente"
+          data-tooltip="Traer al frente"
+          data-tooltip-dir="up"
           onClick={() => each((el) => st.reorder(el.id, 'front'))}
         >
           <IconLayers />
@@ -490,7 +494,8 @@ function SelectionActions() {
         <button
           type="button"
           className="btn btn--icon"
-          title="Aplanar a píxeles: convierte la figura en píxeles editables a mano"
+          data-tooltip="Aplanar a píxeles"
+          data-tooltip-dir="up"
           onClick={() =>
             each((el) => {
               const flat = flattenElement(el)
@@ -503,7 +508,8 @@ function SelectionActions() {
         <button
           type="button"
           className="btn btn--icon btn--danger"
-          title="Eliminar — Supr"
+          data-tooltip="Eliminar"
+          data-tooltip-dir="up"
           onClick={() => {
             st.pushHistory()
             st.removeElements(selection)

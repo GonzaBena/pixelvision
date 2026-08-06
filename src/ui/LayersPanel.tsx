@@ -2,7 +2,7 @@ import { elementLabel } from '../core/elements'
 import { useEditor } from '../state/store'
 import { IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './Icons'
 
-export function LayersPanel({ onClose }: { onClose: () => void }) {
+export function LayersPanel({ open = false, onClose }: { open?: boolean; onClose: () => void }) {
   const version = useEditor((s) => s.version)
   const selection = useEditor((s) => s.selection)
   void version
@@ -11,7 +11,7 @@ export function LayersPanel({ onClose }: { onClose: () => void }) {
   const elements = [...st.scene.elements].reverse()
 
   return (
-    <aside className="island layers" aria-label="Capas">
+    <aside className={`island layers${open ? ' layers--open' : ''}`} aria-label="Capas">
       <header className="layers__head">
         <h2>Capas</h2>
         <button type="button" className="btn btn--ghost btn--sm" onClick={onClose}>
@@ -40,7 +40,8 @@ export function LayersPanel({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 className="layer__btn"
-                title={el.hidden ? 'Mostrar' : 'Ocultar'}
+                data-tooltip={el.hidden ? 'Mostrar' : 'Ocultar'}
+                data-tooltip-dir="up"
                 onClick={() => st.updateElement(el.id, { hidden: !el.hidden })}
               >
                 {el.hidden ? <IconEyeOff /> : <IconEye />}
@@ -48,7 +49,8 @@ export function LayersPanel({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 className="layer__btn"
-                title={el.locked ? 'Desbloquear' : 'Bloquear'}
+                data-tooltip={el.locked ? 'Desbloquear' : 'Bloquear'}
+                data-tooltip-dir="up"
                 onClick={() => st.updateElement(el.id, { locked: !el.locked })}
               >
                 {el.locked ? <IconLock /> : <IconUnlock />}
@@ -56,7 +58,8 @@ export function LayersPanel({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 className="layer__btn layer__btn--danger"
-                title="Eliminar"
+                data-tooltip="Eliminar"
+                data-tooltip-dir="up"
                 onClick={() => {
                   st.pushHistory()
                   st.removeElements([el.id])

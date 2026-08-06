@@ -138,6 +138,8 @@ export function CanvasStage() {
 
   const requestDraw = useRef<() => void>(() => {})
 
+  const lastFingerprint = useRef<string>('')
+
   // --- Medición del stage -----------------------------------------------------
   useEffect(() => {
     const wrap = wrapRef.current
@@ -213,6 +215,7 @@ export function CanvasStage() {
     const t = computeTransform(st.viewport, dpr)
     const cw = st.scene.canvas.w
     const ch = st.scene.canvas.h
+    const bg = st.scene.canvas.background || ''
 
     // Capa base: damero + escena escalada sin suavizado.
     const bctx = base.getContext('2d')
@@ -228,10 +231,18 @@ export function CanvasStage() {
       off.width = cw
       off.height = ch
     }
+
+    const draftStr = st.draft ? `${st.draft.id}:${st.draft.rev}:${st.draft.hidden ? 1 : 0}` : 'none'
+    const elementsStr = st.scene.elements.map((el) => `${el.id}:${el.rev}:${el.hidden ? 1 : 0}`).join(',')
+    const fingerprint = `${cw}x${ch}bg:${bg}|draft:${draftStr}|els:${elementsStr}`
+
     const octx = off.getContext('2d')
     if (octx) {
-      const buf = renderScene(st.scene, st.draft)
-      octx.putImageData(new ImageData(buf.data, cw, ch), 0, 0)
+      if (fingerprint !== lastFingerprint.current) {
+        const buf = renderScene(st.scene, st.draft)
+        octx.putImageData(new ImageData(buf.data, cw, ch), 0, 0)
+        lastFingerprint.current = fingerprint
+      }
       bctx.drawImage(off, 0, 0, cw, ch, t.ox, t.oy, cw * t.scale, ch * t.scale)
     }
     drawCanvasBorder(bctx, t, cw, ch)
@@ -1038,12 +1049,38 @@ export function CanvasStage() {
     requestDraw.current()
   }
 
-  const onWheel = (e: React.WheelEvent) => {
-    const st = useEditor.getState()
-    const css = localCss(e)
-    const dir = e.deltaY < 0 ? 1 : -1
-    st.setViewport(zoomAt(st.viewport, nextZoom(st.viewport.zoom, dir), css.x, css.y))
-  }
+  // --- Manejo del trackpad y rueda de mouse (Zoom y Paneo de 2 dedos) ---------
+  useEffect(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault() // Detiene el zoom/scroll nativo de la página en Mac
+      const st = useEditor.getState()
+      const r = wrap.getBoundingClientRect()
+      const cssX = e.clientX - r.left
+      const cssY = e.clientY - r.top
+
+      if (e.ctrlKey) {
+        // Gesto de pellizcar (pinch-to-zoom) con 2 dedos, o Ctrl + Rueda del mouse.
+        // e.deltaY es negativo al acercar, positivo al alejar.
+        const factor = Math.exp(-e.deltaY * 0.008)
+        const targetZoom = Math.max(0.1, Math.min(64, st.viewport.zoom * factor))
+        st.setViewport(zoomAt(st.viewport, targetZoom, cssX, cssY))
+      } else {
+        // Desplazamiento con 2 dedos (panning) o desplazamiento tradicional con rueda.
+        st.setViewport({
+          panX: st.viewport.panX - e.deltaX,
+          panY: st.viewport.panY - e.deltaY,
+        })
+      }
+    }
+
+    wrap.addEventListener('wheel', handleWheel, { passive: false })
+    return () => {
+      wrap.removeEventListener('wheel', handleWheel)
+    }
+  }, [])
 
   // --- Espacio para hacer pan -------------------------------------------------
   useEffect(() => {
@@ -1140,7 +1177,6 @@ export function CanvasStage() {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onPointerLeave={onPointerLeave}
-      onWheel={onWheel}
       onContextMenu={(e) => e.preventDefault()}
       onDragOver={(e) => {
         e.preventDefault()

@@ -29,16 +29,43 @@ export function ZoomControls() {
 
   return (
     <div className="island zoom">
-      <button type="button" className="btn btn--icon" onClick={() => step(-1)} title="Alejar" aria-label="Alejar">
+      <button
+        type="button"
+        className="btn btn--icon"
+        onClick={() => step(-1)}
+        data-tooltip="Alejar"
+        data-tooltip-dir="up"
+        aria-label="Alejar"
+      >
         <IconMinus />
       </button>
-      <button type="button" className="zoom__value" onClick={fit} title="Ajustar a la vista — Shift+1">
+      <button
+        type="button"
+        className="zoom__value"
+        onClick={fit}
+        data-tooltip="Ajustar a la vista — Shift+1"
+        data-tooltip-dir="up"
+      >
         {zoom >= 1 ? `${Math.round(zoom)}×` : `${Math.round(zoom * 100)}%`}
       </button>
-      <button type="button" className="btn btn--icon" onClick={() => step(1)} title="Acercar" aria-label="Acercar">
+      <button
+        type="button"
+        className="btn btn--icon"
+        onClick={() => step(1)}
+        data-tooltip="Acercar"
+        data-tooltip-dir="up"
+        aria-label="Acercar"
+      >
         <IconPlus />
       </button>
-      <button type="button" className="btn btn--icon" onClick={fit} title="Ajustar a la vista" aria-label="Ajustar a la vista">
+      <button
+        type="button"
+        className="btn btn--icon"
+        onClick={fit}
+        data-tooltip="Ajustar a la vista"
+        data-tooltip-dir="up"
+        aria-label="Ajustar a la vista"
+      >
         <IconFit />
       </button>
     </div>

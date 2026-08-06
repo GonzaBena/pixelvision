@@ -8,12 +8,12 @@
   --accent: #6965db;
   --accent-soft: #e9e8fd;
   --bg: #f7f7fa;
-  --island: #ffffff;
+  --island: rgba(255, 255, 255, 0.85);
   --text: #1b1b1f;
   --text-dim: #6b6b78;
-  --border: #e4e4ec;
+  --border: rgba(228, 228, 236, 0.8);
   --danger: #e03131;
-  --shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.08);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.02), 0 6px 18px rgba(0, 0, 0, 0.06);
   --radius: 12px;
   --radius-sm: 8px;
   color-scheme: light dark;
@@ -24,11 +24,11 @@
     --accent: #8781f5;
     --accent-soft: #2f2c52;
     --bg: #121214;
-    --island: #1e1e22;
+    --island: rgba(30, 30, 34, 0.85);
     --text: #ececf1;
     --text-dim: #9b9baa;
-    --border: #2e2e36;
-    --shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.45);
+    --border: rgba(46, 46, 54, 0.8);
+    --shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -46,7 +46,13 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font:
+    13px/1.45 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
@@ -72,12 +78,16 @@ textarea {
   inset: 0;
   touch-action: none;
   overscroll-behavior: none;
-  background:
-    radial-gradient(circle at 1px 1px, rgba(128, 128, 150, 0.22) 1px, transparent 0) 0 0 / 24px 24px;
+  background: radial-gradient(
+      circle at 1px 1px,
+      rgba(128, 128, 150, 0.22) 1px,
+      transparent 0
+    )
+    0 0 / 24px 24px;
 }
 
 .stage--dropping::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 12px;
   border: 2px dashed var(--accent);
@@ -121,6 +131,8 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 /* --- Barra superior ------------------------------------------------------- */
@@ -223,6 +235,7 @@ textarea {
   width: 236px;
   max-height: calc(100% - 142px);
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -231,7 +244,9 @@ textarea {
   opacity: 0;
   pointer-events: none;
   transform: translateX(-10px);
-  transition: opacity 0.15s, transform 0.15s;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
 }
 
 .panel--open {
@@ -271,7 +286,7 @@ textarea {
   gap: 8px;
 }
 
-.row input[type='range'] {
+.row input[type="range"] {
   flex: 1;
   min-width: 0;
   accent-color: var(--accent);
@@ -334,8 +349,10 @@ textarea {
 /* Damero para indicar "sin relleno". */
 .swatch--none {
   background:
-    linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%) 0 0 / 8px 8px,
-    linear-gradient(45deg, #ccc 25%, #fff 25%, #fff 75%, #ccc 75%) 4px 4px / 8px 8px;
+    linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)
+      0 0 / 8px 8px,
+    linear-gradient(45deg, #ccc 25%, #fff 25%, #fff 75%, #ccc 75%) 4px 4px / 8px
+      8px;
 }
 
 .popover {
@@ -353,6 +370,8 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .popover__grid {
@@ -406,7 +425,7 @@ textarea {
 
 .input--hex {
   flex: 1;
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 .input--num {
@@ -530,6 +549,8 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .menu__title {
@@ -612,6 +633,18 @@ textarea {
   flex-direction: column;
   padding: 12px;
   z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(10px);
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+
+.layers--open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
 }
 
 .layers__head {
@@ -722,6 +755,8 @@ textarea {
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .textedit__input {
@@ -733,7 +768,7 @@ textarea {
   background: var(--bg);
   resize: vertical;
   outline: none;
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 .textedit__hint {
@@ -822,7 +857,7 @@ kbd {
   border-bottom-width: 2px;
   border-radius: 5px;
   background: var(--bg);
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 11px;
   white-space: nowrap;
 }
@@ -950,6 +985,16 @@ kbd {
     border-bottom: none;
     z-index: 16;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+
+    transform: translateY(100%);
+    opacity: 1;
+    pointer-events: none;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .layers--open {
+    transform: translateY(0);
+    pointer-events: auto;
   }
 
   /* ColorPicker popover en celulares */
@@ -974,5 +1019,148 @@ kbd {
     min-width: 44px;
     font-size: 11px;
     padding: 4px 2px;
+  }
+}
+
+/* --- Backdrop móvil --- */
+.mobile-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 10;
+    animation: fade-in 0.2s ease-out;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* --- Tooltips Personalizados --- */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::before,
+[data-tooltip]::after {
+  position: absolute;
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 100;
+  transition:
+    opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Tooltip por defecto: abajo (para topbar y toolbar) */
+[data-tooltip]::before {
+  content: "";
+  top: calc(100% + 4px);
+  transform: translateX(-50%) translateY(-4px);
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent transparent var(--island) transparent;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  top: calc(100% + 12px);
+  transform: translateX(-50%) translateY(-4px);
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--island);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Mostrar tooltip al pasar el cursor (hover) o al enfocarse */
+[data-tooltip]:hover::before,
+[data-tooltip]:focus-within::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-within::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Dirección arriba (para zoom y controles inferiores) */
+[data-tooltip-dir="up"]::before {
+  top: auto;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%) translateY(4px);
+  border-color: var(--island) transparent transparent transparent;
+}
+
+[data-tooltip-dir="up"]::after {
+  top: auto;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%) translateY(4px);
+}
+
+[data-tooltip-dir="up"]:hover::before,
+[data-tooltip-dir="up"]:focus-within::before {
+  transform: translateX(-50%) translateY(0);
+}
+
+[data-tooltip-dir="up"]:hover::after,
+[data-tooltip-dir="up"]:focus-within::after {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* --- Pill de ayuda de herramienta --- */
+.tool-help-pill {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  font-size: 12px;
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.tool-help-pill strong {
+  color: var(--accent);
+}
+
+@media (max-width: 768px) {
+  .tool-help-pill {
+    position: absolute;
+    top: 108px;
+    bottom: auto;
+    left: 8px;
+    right: 8px;
+    transform: none;
+    max-width: calc(100vw - 16px);
+    white-space: normal;
+    text-align: center;
+    font-size: 11px;
+    padding: 6px 10px;
   }
 }
