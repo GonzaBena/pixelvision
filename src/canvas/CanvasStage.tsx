@@ -1025,16 +1025,22 @@ export function CanvasStage() {
 
     if (it.kind === 'paint') {
       const el = st.scene.elements.find((x) => x.id === it.id)
+      console.log('onPointerUp paint finishing. Found element:', el)
       if (el && el.type === 'freedraw') {
         const bounds = bufferBounds(el.buf)
+        console.log('Computed bounds:', bounds)
         if (!bounds) {
+          console.log('No bounds, removing element:', el.id)
           st.removeElements([el.id])
         } else {
           const cropped = cropBuffer(el.buf, bounds)
+          const newX = el.x + bounds.x
+          const newY = el.y + bounds.y
+          console.log('Cropping element. New geometry:', { x: newX, y: newY, w: cropped.w, h: cropped.h })
           st.updateElement(el.id, {
             buf: cropped,
-            x: el.x + bounds.x,
-            y: el.y + bounds.y,
+            x: newX,
+            y: newY,
           })
         }
       }
