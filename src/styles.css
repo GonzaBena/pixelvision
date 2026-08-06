@@ -1130,15 +1130,23 @@ kbd {
   -webkit-backdrop-filter: blur(10px);
 }
 
-/* Mostrar tooltip al pasar el cursor (hover) o al enfocarse */
-[data-tooltip]:hover::before,
-[data-tooltip]:focus-within::before {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
+/* Mostrar tooltip al pasar el cursor (hover) en dispositivos que soportan hover */
+@media (hover: hover) {
+  [data-tooltip]:hover::before,
+  [data-tooltip]:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  [data-tooltip-dir="up"]:hover::before,
+  [data-tooltip-dir="up"]:hover::after {
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
-[data-tooltip]:hover::after,
-[data-tooltip]:focus-within::after {
+/* Mostrar tooltip al enfocarse con teclado (accesibilidad) */
+[data-tooltip]:focus-visible::before,
+[data-tooltip]:focus-visible::after {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
@@ -1157,13 +1165,8 @@ kbd {
   transform: translateX(-50%) translateY(4px);
 }
 
-[data-tooltip-dir="up"]:hover::before,
-[data-tooltip-dir="up"]:focus-within::before {
-  transform: translateX(-50%) translateY(0);
-}
-
-[data-tooltip-dir="up"]:hover::after,
-[data-tooltip-dir="up"]:focus-within::after {
+[data-tooltip-dir="up"]:focus-visible::before,
+[data-tooltip-dir="up"]:focus-visible::after {
   transform: translateX(-50%) translateY(0);
 }
 
