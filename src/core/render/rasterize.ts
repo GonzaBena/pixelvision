@@ -6,6 +6,8 @@ import {
   parseColor,
   rotateBuffer,
 } from '../pixels'
+import { applyPalette } from '../image/quantize'
+import { getPalette } from '../palettes'
 import {
   ellipseMask,
   erodeMask,
@@ -49,6 +51,17 @@ export function rasterizeElement(el: PVElement): RasterResult {
 
   const base = rasterizeBase(el)
   const result = applyTransform(el, base)
+
+  const activePalette = el.restrictPalette
+  if (activePalette && el.type !== 'image') {
+    const pal = getPalette(activePalette)
+    if (pal && pal.colors.length > 0) {
+      const palColors = pal.colors.map((c) => parseColor(c))
+      result.buf = cloneBuffer(result.buf)
+      applyPalette(result.buf, palColors)
+    }
+  }
+
   cache.set(el.id, { rev: el.rev, result })
   return result
 }

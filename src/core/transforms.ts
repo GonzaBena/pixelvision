@@ -95,3 +95,29 @@ export function scaleWithin(el: PVElement, from: Rect, to: Rect): Partial<PVElem
     h: Math.max(1, b.h * sy),
   })
 }
+
+/**
+ * Escalado uniforme del grupo de elementos seleccionados alrededor de su centro.
+ */
+export function scaleSelectionUniformly(
+  selected: PVElement[],
+  factor: number,
+): { id: string; patch: Partial<PVElement> }[] {
+  const from = boundsOf(selected)
+  if (!from) return []
+  const w = Math.max(1, Math.round(from.w * factor))
+  const h = Math.max(1, Math.round(from.h * factor))
+  const cx = from.x + from.w / 2
+  const cy = from.y + from.h / 2
+  const to = {
+    x: Math.round(cx - w / 2),
+    y: Math.round(cy - h / 2),
+    w,
+    h,
+  }
+  return selected.map((el) => ({
+    id: el.id,
+    patch: scaleWithin(el, from, to),
+  }))
+}
+

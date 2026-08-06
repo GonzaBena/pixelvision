@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { PVElement, Scene } from '../types'
+import type { FreedrawElement, PVElement, Scene } from '../types'
 import { createBuffer, getPixel, setPixel } from '../pixels'
 import { DEFAULT_TOOL_OPTIONS, createEllipse, createRect } from '../elements'
 import { renderScene } from './renderScene'
@@ -139,3 +139,29 @@ describe('hitTest', () => {
     expect(hitTest(scene([el]), 2, 2)).toBeNull()
   })
 })
+
+describe('dynamic palette restriction', () => {
+  it('renders elements snapped to the restricted palette without mutating their original properties', () => {
+    // A red solid freedraw element. PICO-8 red is #ff004d ([255, 0, 77, 255])
+    const el = solid(0, 0, 8, 8, RED)
+    const s = scene([el])
+
+    // Apply PICO-8 restriction
+    el.restrictPalette = 'pico8'
+
+    const out = renderScene(s)
+    // Red [255, 0, 0, 255] should be snapped to PICO-8 red [255, 0, 77, 255]
+    expect(getPixel(out, 2, 2)).toEqual([255, 0, 77, 255])
+
+    // Verify the original element buffer was not mutated
+    expect(getPixel((el as FreedrawElement).buf, 2, 2)).toEqual(RED)
+
+    // Remove palette restriction
+    el.restrictPalette = null
+    invalidateRaster() // Clear cache
+    const outFree = renderScene(s)
+    // Should render in original red [255, 0, 0, 255]
+    expect(getPixel(outFree, 2, 2)).toEqual(RED)
+  })
+})
+

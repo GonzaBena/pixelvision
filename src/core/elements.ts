@@ -38,6 +38,7 @@ export interface ToolOptions {
   systemFamily: string
   systemSize: number
   systemThreshold: number
+  restrictPalette: string | null
 }
 
 export const DEFAULT_TOOL_OPTIONS: ToolOptions = {
@@ -58,6 +59,7 @@ export const DEFAULT_TOOL_OPTIONS: ToolOptions = {
   systemFamily: 'monospace',
   systemSize: 12,
   systemThreshold: 128,
+  restrictPalette: null,
 }
 
 function base(x: number, y: number) {
@@ -79,6 +81,7 @@ export function createRect(r: Rect, o: ToolOptions): PVElement {
     strokeWidth: o.strokeWidth,
     radius: o.radius,
     opacity: o.opacity,
+    restrictPalette: o.restrictPalette,
   }
 }
 
@@ -92,6 +95,7 @@ export function createEllipse(r: Rect, o: ToolOptions): PVElement {
     fill: o.fill,
     strokeWidth: o.strokeWidth,
     opacity: o.opacity,
+    restrictPalette: o.restrictPalette,
   }
 }
 
@@ -106,6 +110,7 @@ export function createPoly(variant: PolyVariant, r: Rect, o: ToolOptions): PVEle
     fill: o.fill,
     strokeWidth: o.strokeWidth,
     opacity: o.opacity,
+    restrictPalette: o.restrictPalette,
   }
 }
 
@@ -126,6 +131,7 @@ export function createLine(
     brushShape: o.brushShape,
     arrow: o.arrow,
     opacity: o.opacity,
+    restrictPalette: o.restrictPalette,
   }
 }
 
@@ -144,12 +150,20 @@ export function createText(x: number, y: number, o: ToolOptions, text = ''): PVE
     systemSize: o.systemSize,
     systemThreshold: o.systemThreshold,
     opacity: o.opacity,
+    restrictPalette: o.restrictPalette,
   }
 }
 
 /** Convierte una máscara pintada de un color en un elemento de trazo. */
-export function freedrawFromMask(mask: Mask, color: string, ox: number, oy: number): FreedrawElement | null {
+export function freedrawFromMask(
+  mask: Mask,
+  color: string,
+  ox: number,
+  oy: number,
+  restrictPalette?: string | null,
+): FreedrawElement | null {
   const el = createFreedraw(ox, oy, mask.w, mask.h)
+  el.restrictPalette = restrictPalette ?? null
   const c = parseColor(color)
   for (let y = 0; y < mask.h; y++) {
     for (let x = 0; x < mask.w; x++) {
@@ -185,6 +199,7 @@ export function flattenElement(el: PVElement): FreedrawElement | null {
     opacity: el.opacity,
     locked: el.locked,
     hidden: el.hidden,
+    restrictPalette: el.restrictPalette,
   }
   return flat
 }

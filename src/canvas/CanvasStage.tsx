@@ -234,7 +234,8 @@ export function CanvasStage() {
 
     const draftStr = st.draft ? `${st.draft.id}:${st.draft.rev}:${st.draft.hidden ? 1 : 0}` : 'none'
     const elementsStr = st.scene.elements.map((el) => `${el.id}:${el.rev}:${el.hidden ? 1 : 0}`).join(',')
-    const fingerprint = `${cw}x${ch}bg:${bg}|draft:${draftStr}|els:${elementsStr}`
+    const pal = st.options.restrictPalette ?? 'none'
+    const fingerprint = `${cw}x${ch}bg:${bg}|pal:${pal}|draft:${draftStr}|els:${elementsStr}`
 
     const octx = off.getContext('2d')
     if (octx) {
@@ -454,7 +455,7 @@ export function CanvasStage() {
   const doBucket = (st: EditorState, px: number, py: number) => {
     const composed = renderScene(st.scene)
     const mask = floodFillMask(composed, px, py, st.options.tolerance)
-    const el = freedrawFromMask(mask, st.options.stroke, 0, 0)
+    const el = freedrawFromMask(mask, st.options.stroke, 0, 0, st.options.restrictPalette)
     if (!el) return
     el.opacity = st.options.opacity
     st.pushHistory()

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { DEFAULT_SWATCHES } from '../core/palettes'
-import { useEditor } from '../state/store'
+import { DEFAULT_SWATCHES, getPalette } from '../core/palettes'
+import { useEditor, snapColor } from '../state/store'
 
 interface Props {
   label: string
@@ -8,13 +8,18 @@ interface Props {
   onChange: (v: string | null) => void
   /** Permite el valor "sin color" (relleno vacío). */
   allowNone?: boolean
+  restrictPalette?: string | null
 }
 
-export function ColorPicker({ label, value, onChange, allowNone = false }: Props) {
+export function ColorPicker({ label, value, onChange, allowNone = false, restrictPalette = null }: Props) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(value ?? '#000000')
   const recent = useEditor((s) => s.recentColors)
   const ref = useRef<HTMLDivElement>(null)
+
+  const palette = restrictPalette ? getPalette(restrictPalette) : null
+  const swatches = palette ? palette.colors : DEFAULT_SWATCHES
+  const snappedValue = value && restrictPalette ? snapColor(value, restrictPalette) : value
 
   useEffect(() => setDraft(value ?? '#000000'), [value])
 
@@ -40,11 +45,11 @@ export function ColorPicker({ label, value, onChange, allowNone = false }: Props
     <div className="field" ref={ref}>
       <span className="field__label">{label}</span>
       <div className="swatches">
-        {DEFAULT_SWATCHES.slice(0, 5).map((c) => (
+        {swatches.slice(0, 5).map((c) => (
           <button
             key={c}
             type="button"
-            className={`swatch${value === c ? ' swatch--active' : ''}`}
+            className={`swatch${snappedValue === c ? ' swatch--active' : ''}`}
             style={{ background: c }}
             onClick={() => onChange(c)}
             title={c}
@@ -54,8 +59,8 @@ export function ColorPicker({ label, value, onChange, allowNone = false }: Props
         <span className="swatches__sep" />
         <button
           type="button"
-          className={`swatch swatch--current${value === null ? ' swatch--none' : ''}`}
-          style={value ? { background: value } : undefined}
+          className={`swatch swatch--current${snappedValue === null ? ' swatch--none' : ''}`}
+          style={snappedValue ? { background: snappedValue } : undefined}
           onClick={() => setOpen((v) => !v)}
           title="Elegir color"
           aria-label="Elegir color"
@@ -65,11 +70,11 @@ export function ColorPicker({ label, value, onChange, allowNone = false }: Props
       {open && (
         <div className="popover">
           <div className="popover__grid">
-            {DEFAULT_SWATCHES.map((c) => (
+            {swatches.map((c) => (
               <button
                 key={c}
                 type="button"
-                className={`swatch${value === c ? ' swatch--active' : ''}`}
+                className={`swatch${snappedValue === c ? ' swatch--active' : ''}`}
                 style={{ background: c }}
                 onClick={() => onChange(c)}
                 title={c}

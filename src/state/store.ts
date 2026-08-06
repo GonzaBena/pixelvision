@@ -146,7 +146,7 @@ function persistSettings(patch: SavedSettings) {
 }
 
 /** Ajusta un color a la entrada más cercana de la paleta activa, si hay una. */
-function snapColor(color: string, paletteId: string | null): string {
+export function snapColor(color: string, paletteId: string | null): string {
   if (!paletteId) return color
   const pal = getPalette(paletteId)
   if (!pal || pal.colors.length === 0) return color
@@ -166,6 +166,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   options: {
     ...DEFAULT_TOOL_OPTIONS,
     stroke: isDarkMode ? '#ffffff' : '#1e1e1e',
+    restrictPalette: savedSettings?.restrictPalette ?? null,
     ...(savedSettings?.options ?? {}),
   },
   eraserMode: 'pixel',
@@ -243,8 +244,6 @@ export const useEditor = create<EditorState>((set, get) => ({
   setOptions: (patch) =>
     set((s) => {
       const next = { ...s.options, ...patch }
-      if (patch.stroke) next.stroke = snapColor(patch.stroke, s.restrictPalette)
-      if (patch.fill) next.fill = snapColor(patch.fill, s.restrictPalette)
       persistSettings({ options: next })
       return { options: next }
     }),
@@ -257,13 +256,19 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setRestrictPalette: (restrictPalette) =>
     set((s) => {
-      const options = { ...s.options }
-      if (restrictPalette) {
-        options.stroke = snapColor(options.stroke, restrictPalette)
-        if (options.fill) options.fill = snapColor(options.fill, restrictPalette)
-      }
+      const options = { ...s.options, restrictPalette }
       persistSettings({ restrictPalette, options })
-      return { restrictPalette, options }
+      if (s.selection.length > 0) {
+        for (const id of s.selection) {
+          const el = s.scene.elements.find((e) => e.id === id)
+          if (el) {
+            el.restrictPalette = restrictPalette
+            el.rev += 1
+            invalidateRaster(el.id)
+          }
+        }
+      }
+      return { restrictPalette, options, version: s.version + 1 }
     }),
 
   setDraft: (draft) => set((s) => ({ draft, version: s.version + 1 })),
@@ -283,6 +288,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (!el) return {}
       Object.assign(el, patch)
       el.rev += 1
+      invalidateRaster(id)
       return { version: s.version + 1 }
     }),
 

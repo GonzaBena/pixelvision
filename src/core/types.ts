@@ -57,6 +57,7 @@ interface BaseElement {
   rot?: Rotation
   /** 0..1, multiplica el alpha del elemento al componer. */
   opacity?: number
+  restrictPalette?: string | null
 }
 
 export interface FreedrawElement extends BaseElement {

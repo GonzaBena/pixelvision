@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import type { ImageElement, PVElement } from '../core/types'
 import { flattenElement } from '../core/elements'
-import { flipElement, rotateElement } from '../core/transforms'
+import { flipElement, rotateElement, scaleSelectionUniformly } from '../core/transforms'
 import { PALETTES } from '../core/palettes'
 import { useEditor } from '../state/store'
 import { CanvasBackground } from './CanvasBackground'
@@ -28,7 +29,7 @@ export function PropertiesPanel({ open = false, onClose }: PropertiesPanelProps)
   const setOptions = useEditor((s) => s.setOptions)
   const eraserMode = useEditor((s) => s.eraserMode)
   const setEraserMode = useEditor((s) => s.setEraserMode)
-  const restrictPalette = useEditor((s) => s.restrictPalette)
+  const globalRestrictPalette = useEditor((s) => s.restrictPalette)
   const setRestrictPalette = useEditor((s) => s.setRestrictPalette)
   const selection = useEditor((s) => s.selection)
   const version = useEditor((s) => s.version)
@@ -36,6 +37,15 @@ export function PropertiesPanel({ open = false, onClose }: PropertiesPanelProps)
 
   const st = useEditor.getState()
   const selected = st.scene.elements.filter((e) => selection.includes(e.id))
+
+  const restrictPalette = selected.length > 0
+    ? (selected[0].restrictPalette ?? null)
+    : globalRestrictPalette
+
+  const handleRestrictPaletteChange = (val: string | null) => {
+    if (selected.length > 0) st.pushHistory()
+    setRestrictPalette(val)
+  }
   const showShape = SHAPE_TOOLS.has(tool) || selected.some((e) => ['rect', 'ellipse', 'poly'].includes(e.type))
   const showStroke = STROKE_TOOLS.has(tool) || selected.some((e) => e.type === 'line')
   const showBrush = tool === 'brush' || (tool === 'eraser' && eraserMode === 'pixel')
@@ -89,11 +99,18 @@ export function PropertiesPanel({ open = false, onClose }: PropertiesPanelProps)
           label={showText ? 'Color del texto' : 'Trazo'}
           value={options.stroke}
           onChange={(v) => v && applyColor('stroke', v)}
+          restrictPalette={restrictPalette}
         />
       )}
 
       {showShape && (
-        <ColorPicker label="Relleno" value={options.fill} onChange={(v) => applyColor('fill', v)} allowNone />
+        <ColorPicker
+          label="Relleno"
+          value={options.fill}
+          onChange={(v) => applyColor('fill', v)}
+          allowNone
+          restrictPalette={restrictPalette}
+        />
       )}
 
       {showBrush && (
@@ -236,7 +253,7 @@ export function PropertiesPanel({ open = false, onClose }: PropertiesPanelProps)
             <select
               className="input"
               value={restrictPalette ?? ''}
-              onChange={(e) => setRestrictPalette(e.target.value || null)}
+              onChange={(e) => handleRestrictPaletteChange(e.target.value || null)}
               aria-label="Restringir a paleta"
             >
               <option value="">Color libre</option>
@@ -442,6 +459,7 @@ function ImageOptions({ el }: { el: ImageElement }) {
 }
 
 function SelectionActions() {
+  const [customScale, setCustomScale] = useState('2')
   const selection = useEditor((s) => s.selection)
   const st = useEditor.getState()
   const selected = st.scene.elements.filter((e) => selection.includes(e.id))
@@ -451,9 +469,18 @@ function SelectionActions() {
     for (const el of selected) fn(el)
   }
 
+  const handleScale = (factor: number) => {
+    st.pushHistory()
+    const updates = scaleSelectionUniformly(selected, factor)
+    for (const update of updates) {
+      st.updateElement(update.id, update.patch)
+    }
+  }
+
   return (
-    <div className="field field--actions">
-      <span className="field__label">Acciones</span>
+    <>
+      <div className="field field--actions">
+        <span className="field__label">Acciones</span>
       <div className="btnrow">
         <button
           type="button"
@@ -518,6 +545,68 @@ function SelectionActions() {
           <IconTrash />
         </button>
       </div>
-    </div>
+      </div>
+      <div className="field">
+        <span className="field__label">Escalar</span>
+        <div className="btnrow" style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => handleScale(0.5)}
+            title="Reducir al 50% (0.5x)"
+          >
+            0.5x
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => handleScale(2)}
+            title="Duplicar tamaño (2x)"
+          >
+            2x
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => handleScale(3)}
+            title="Triplicar tamaño (3x)"
+          >
+            3x
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => handleScale(4)}
+            title="Cuadruplicar tamaño (4x)"
+          >
+            4x
+          </button>
+        </div>
+        <div className="row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <input
+            type="number"
+            className="input"
+            style={{ width: '70px', padding: '4px 8px', fontSize: '12px' }}
+            placeholder="Personalizado"
+            min={0.01}
+            max={100}
+            step={0.1}
+            value={customScale}
+            onChange={(e) => setCustomScale(e.target.value)}
+            aria-label="Escala personalizada"
+          />
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => {
+              const f = parseFloat(customScale)
+              if (!isNaN(f) && f > 0) handleScale(f)
+            }}
+          >
+            Aplicar
+          </button>
+        </div>
+      </div>
+    </>
   )
 }
