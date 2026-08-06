@@ -26,7 +26,6 @@ import { selectionBounds, useEditor, type EditorState } from '../state/store'
 import {
   computeTransform,
   fitToView,
-  nextZoom,
   screenToPixel,
   zoomAt,
   type ViewTransform,
