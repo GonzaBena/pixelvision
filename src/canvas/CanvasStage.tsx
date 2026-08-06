@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FreedrawElement, ImageElement, PixelBuffer, PVElement, Rect } from '../core/types'
-import { cloneBuffer, createBuffer, expandBuffer, parseColor, rgbaToHex } from '../core/pixels'
+import { bufferBounds, cloneBuffer, createBuffer, cropBuffer, expandBuffer, parseColor, rgbaToHex } from '../core/pixels'
 import { renderScene } from '../core/render/renderScene'
 import { hitTestWithSlop } from '../core/render/hitTest'
 import { elementBounds, elementsInRect, unionBounds } from '../core/render/hitTest'
@@ -1021,6 +1021,23 @@ export function CanvasStage() {
 
     if (it.kind !== 'none' && 'pointerId' in it && it.pointerId !== e.pointerId && e.pointerType === 'touch') {
       return
+    }
+
+    if (it.kind === 'paint') {
+      const el = st.scene.elements.find((x) => x.id === it.id)
+      if (el && el.type === 'freedraw') {
+        const bounds = bufferBounds(el.buf)
+        if (!bounds) {
+          st.removeElements([el.id])
+        } else {
+          const cropped = cropBuffer(el.buf, bounds)
+          st.updateElement(el.id, {
+            buf: cropped,
+            x: el.x + bounds.x,
+            y: el.y + bounds.y,
+          })
+        }
+      }
     }
 
     if (it.kind === 'shape' && st.draft) {
