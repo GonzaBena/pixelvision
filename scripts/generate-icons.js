@@ -59,26 +59,33 @@ function generatePng(width, height, getPixel) {
   return Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk])
 }
 
-function drawPixelArtIcon(x, y, w, h) {
-  const r = w * 0.2
-  const cx = w / 2
-  const cy = h / 2
-  
-  const dx = Math.max(0, Math.abs(x - cx) - (w / 2 - r))
-  const dy = Math.max(0, Math.abs(y - cy) - (h / 2 - r))
-  if (dx * dx + dy * dy > r * r) {
-    return [0, 0, 0, 0]
+function drawPixelArtIcon(x, y, w, h, maskable = false) {
+  if (!maskable) {
+    const r = w * 0.22
+    const cx = w / 2
+    const cy = h / 2
+    const dx = Math.max(0, Math.abs(x - cx) - (w / 2 - r))
+    const dy = Math.max(0, Math.abs(y - cy) - (h / 2 - r))
+    if (dx * dx + dy * dy > r * r) {
+      return [0, 0, 0, 0] // esquinas transparentes para icono normal
+    }
   }
 
-  const bgR = Math.round(105 + (x / w) * 20)
-  const bgG = Math.round(101 - (y / h) * 30)
-  const bgB = Math.round(219 - (x / w) * 20)
+  // Color de fondo morado solido (#6965DB)
+  const bgR = 105
+  const bgG = 101
+  const bgB = 219
 
-  const pad = w * 0.2
-  if (x >= pad && x <= w - pad && y >= pad && y <= h - pad) {
-    const gridX = Math.floor(((x - pad) / (w - pad * 2)) * 8)
-    const gridY = Math.floor(((y - pad) / (h - pad * 2)) * 8)
+  // Safe zone pad: 20% en normal, 25% en maskable para que encaje perfecto en circulos de Android
+  const padRatio = maskable ? 0.25 : 0.18
+  const padX = w * padRatio
+  const padY = h * padRatio
 
+  if (x >= padX && x <= w - padX && y >= padY && y <= h - padY) {
+    const gridX = Math.floor(((x - padX) / (w - padX * 2)) * 8)
+    const gridY = Math.floor(((y - padY) / (h - padY * 2)) * 8)
+
+    // Dibujo del logo 'PV' pixel art
     const pixelArt = [
       [0, 1, 1, 1, 1, 0, 0, 0],
       [0, 1, 0, 0, 1, 1, 0, 0],
@@ -91,14 +98,15 @@ function drawPixelArtIcon(x, y, w, h) {
     ]
 
     if (pixelArt[gridY] && pixelArt[gridY][gridX] === 1) {
-      if (gridY < 4) return [255, 220, 100, 255]
-      return [100, 230, 255, 255]
+      if (gridY < 4) return [255, 220, 100, 255] // amarillo
+      return [100, 230, 255, 255] // cian
     }
 
+    // Cuadrícula damero de fondo del lienzo
     if ((gridX + gridY) % 2 === 0) {
-      return [255, 255, 255, 240]
+      return [255, 255, 255, 255]
     } else {
-      return [230, 230, 240, 240]
+      return [230, 230, 245, 255]
     }
   }
 
@@ -108,7 +116,9 @@ function drawPixelArtIcon(x, y, w, h) {
 const outDir = path.resolve('public')
 fs.mkdirSync(outDir, { recursive: true })
 
-fs.writeFileSync(path.join(outDir, 'icon-192.png'), generatePng(192, 192, drawPixelArtIcon))
-fs.writeFileSync(path.join(outDir, 'icon-512.png'), generatePng(512, 512, drawPixelArtIcon))
-fs.writeFileSync(path.join(outDir, 'apple-touch-icon.png'), generatePng(180, 180, drawPixelArtIcon))
-console.log('PNG icons created successfully in public/')
+fs.writeFileSync(path.join(outDir, 'icon-192.png'), generatePng(192, 192, (x, y, w, h) => drawPixelArtIcon(x, y, w, h, false)))
+fs.writeFileSync(path.join(outDir, 'icon-512.png'), generatePng(512, 512, (x, y, w, h) => drawPixelArtIcon(x, y, w, h, false)))
+fs.writeFileSync(path.join(outDir, 'icon-512-maskable.png'), generatePng(512, 512, (x, y, w, h) => drawPixelArtIcon(x, y, w, h, true)))
+fs.writeFileSync(path.join(outDir, 'apple-touch-icon.png'), generatePng(180, 180, (x, y, w, h) => drawPixelArtIcon(x, y, w, h, true)))
+
+console.log('Iconos PWA generados correctamente en public/')
