@@ -134,6 +134,7 @@ export function CanvasStage() {
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [cursorLabel, setCursorLabel] = useState('default')
   const [dropping, setDropping] = useState(false)
+  const [loadingImage, setLoadingImage] = useState(false)
 
   const requestDraw = useRef<() => void>(() => {})
 
@@ -1105,36 +1106,42 @@ export function CanvasStage() {
 
   // --- Importación de imágenes: soltar y pegar --------------------------------
   const importBlob = useCallback(async (blob: Blob) => {
-    const src = await decodeImageBlob(blob)
-    const st = useEditor.getState()
-    const cw = st.scene.canvas.w
-    const ch = st.scene.canvas.h
-    // Entra al lienzo sin recortarse, conservando la proporción original.
-    const k = Math.min(1, cw / src.w, ch / src.h)
-    const w = Math.max(1, Math.round(src.w * k))
-    const h = Math.max(1, Math.round(src.h * k))
-    const srcId = newSourceId()
-    putImageSource(srcId, src)
-    const el: ImageElement = {
-      id: newId('img'),
-      rev: 0,
-      x: Math.floor((cw - w) / 2),
-      y: Math.floor((ch - h) / 2),
-      type: 'image',
-      w,
-      h,
-      srcId,
-      alphaThreshold: 0,
-      scaleMode: suggestScaleMode(src.w, src.h, w, h),
-      quantize: null,
+    setLoadingImage(true)
+    try {
+      const src = await decodeImageBlob(blob)
+      const st = useEditor.getState()
+      const cw = st.scene.canvas.w
+      const ch = st.scene.canvas.h
+      // Entra al lienzo sin recortarse, conservando la proporción original.
+      const k = Math.min(1, cw / src.w, ch / src.h)
+      const w = Math.max(1, Math.round(src.w * k))
+      const h = Math.max(1, Math.round(src.h * k))
+      const srcId = newSourceId()
+      putImageSource(srcId, src)
+      const el: ImageElement = {
+        id: newId('img'),
+        rev: 0,
+        x: Math.floor((cw - w) / 2),
+        y: Math.floor((ch - h) / 2),
+        type: 'image',
+        w,
+        h,
+        srcId,
+        alphaThreshold: 0,
+        scaleMode: suggestScaleMode(src.w, src.h, w, h),
+        quantize: null,
+      }
+      st.pushHistory()
+      st.addElement(el, true)
+      st.setTool('select')
+      strokeGroup.current = null
+    } finally {
+      setLoadingImage(false)
     }
-    st.pushHistory()
-    st.addElement(el, true)
-    st.setTool('select')
-    strokeGroup.current = null
   }, [])
 
   const importUrl = useCallback(async (url: string) => {
+    setLoadingImage(true)
     try {
       let blob: Blob
       if (url.startsWith('data:')) {
@@ -1162,6 +1169,8 @@ export function CanvasStage() {
     } catch (error) {
       console.error('Error al importar la imagen externa:', error)
       alert('No se pudo cargar la imagen externa debido a restricciones de seguridad (CORS) del sitio de origen o un enlace inválido.')
+    } finally {
+      setLoadingImage(false)
     }
   }, [importBlob])
 
@@ -1257,6 +1266,12 @@ export function CanvasStage() {
       <canvas ref={overlayRef} className="stage__canvas stage__canvas--overlay" />
       <TextOverlay getTransform={getTransform} />
       {dropping && <div className="stage__drophint">Soltá la imagen para estamparla</div>}
+      {loadingImage && (
+        <div className="stage__loading">
+          <div className="stage__loading-spinner" />
+          <span>Cargando imagen...</span>
+        </div>
+      )}
     </div>
   )
 }
