@@ -81,7 +81,16 @@ export default function App() {
       const st = useEditor.getState()
       const mod = e.ctrlKey || e.metaKey
 
-      if (mod && e.key.toLowerCase() === 'c') {
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault()
+        const rect = document.querySelector('.stage')?.getBoundingClientRect()
+        if (rect) {
+          st.setViewport(fitToView(st.scene.canvas.w, st.scene.canvas.h, rect.width, rect.height))
+        }
+        return
+      }
+
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 'c') {
         if (st.selection.length === 0) return
         e.preventDefault()
         const selectedElements = st.scene.elements.filter((el) => st.selection.includes(el.id))
