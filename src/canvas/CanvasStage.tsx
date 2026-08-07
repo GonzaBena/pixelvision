@@ -1188,6 +1188,10 @@ export function CanvasStage() {
       }
     }
 
+    if (it.kind === 'move' || it.kind === 'resize' || it.kind === 'paint') {
+      st.shrinkToFit()
+    }
+
     if (it.kind === 'shape' && st.draft) {
       const draft = st.draft
       // El historial ya se empujó al bajar el puntero (ver onPointerDown), así

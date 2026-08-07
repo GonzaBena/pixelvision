@@ -69,11 +69,13 @@ export interface EditorState {
   version: number
   past: Scene[]
   future: Scene[]
-  /** Id del texto que se está editando en el overlay, si hay alguno. */
   editingTextId: string | null
   isProcessing: boolean
+  canvasBaseWidth: number
+  canvasBaseHeight: number
 
   // Acciones -----------------------------------------------------------------
+  shrinkToFit: () => void
   pushHistory: () => void
   undo: () => void
   redo: () => void
@@ -150,6 +152,66 @@ export function snapColor(color: string, paletteId: string | null): string {
   return rgbaToHex(mapped)
 }
 
+function shrinkToFitHelper(s: {
+  scene: Scene
+  canvasBaseWidth: number
+  canvasBaseHeight: number
+  draft: PVElement | null
+  version: number
+  viewport: Viewport
+}): Partial<EditorState> {
+  const { w: cw, h: ch } = s.scene.canvas
+  const baseW = s.canvasBaseWidth
+  const baseH = s.canvasBaseHeight
+
+  let minX = 0
+  let minY = 0
+  let maxX = baseW
+  let maxY = baseH
+
+  if (s.scene.elements.length > 0) {
+    const bounds = unionBounds(s.scene.elements.map(elementBounds))
+    if (bounds) {
+      minX = Math.min(0, bounds.x)
+      minY = Math.min(0, bounds.y)
+      maxX = Math.max(baseW, bounds.x + bounds.w)
+      maxY = Math.max(baseH, bounds.y + bounds.h)
+    }
+  }
+
+  const nw = Math.max(1, Math.round(maxX - minX))
+  const nh = Math.max(1, Math.round(maxY - minY))
+  const dx = Math.round(-minX)
+  const dy = Math.round(-minY)
+
+  if (dx === 0 && dy === 0 && nw === cw && nh === ch) return {}
+
+  const elements = s.scene.elements.map((el) => {
+    const next = { ...el, x: el.x + dx }
+    next.rev += 1
+    return next as PVElement
+  })
+
+  const draft = s.draft
+    ? ({ ...s.draft, x: s.draft.x + dx, rev: s.draft.rev + 1 } as PVElement)
+    : null
+
+  return {
+    scene: {
+      ...s.scene,
+      canvas: { ...s.scene.canvas, w: nw, h: nh },
+      elements,
+    },
+    draft,
+    version: s.version + 1,
+    viewport: {
+      ...s.viewport,
+      panX: s.viewport.panX - dx * s.viewport.zoom,
+      panY: s.viewport.panY - dy * s.viewport.zoom,
+    },
+  }
+}
+
 const savedSettings = loadSavedSettings()
 
 export const useEditor = create<EditorState>((set, get) => ({
@@ -174,6 +236,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   future: [],
   editingTextId: null,
   isProcessing: false,
+  canvasBaseWidth: 64,
+  canvasBaseHeight: 64,
+
+  shrinkToFit: () =>
+    set((s) => {
+      const patch = shrinkToFitHelper(s)
+      return patch
+    }),
 
   pushHistory: () =>
     set((s) => {
@@ -348,10 +418,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kill = new Set(ids)
       const elements = s.scene.elements.filter((e) => !kill.has(e.id))
       for (const id of ids) invalidateRaster(id)
-      return {
+      const nextState = {
+        ...s,
         scene: { ...s.scene, elements },
         version: s.version + 1,
         selection: s.selection.filter((id) => !kill.has(id)),
+      }
+      const shrinkPatch = shrinkToFitHelper(nextState)
+      return {
+        ...nextState,
+        ...shrinkPatch,
       }
     }),
 
@@ -392,7 +468,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       invalidateRaster()
       return {
-        scene: { ...s.scene, elements: [] },
+        scene: {
+          ...s.scene,
+          canvas: { ...s.scene.canvas, w: s.canvasBaseWidth, h: s.canvasBaseHeight },
+          elements: [],
+        },
         version: s.version + 1,
         selection: [],
         draft: null,
@@ -403,10 +483,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   setCanvasSize: (w, h) => {
     get().pushHistory()
     set((s) => {
+      const nw = Math.max(1, w)
+      const nh = Math.max(1, h)
       return {
+        canvasBaseWidth: nw,
+        canvasBaseHeight: nh,
         scene: {
           ...s.scene,
-          canvas: { ...s.scene.canvas, w: Math.max(1, w), h: Math.max(1, h) },
+          canvas: { ...s.scene.canvas, w: nw, h: nh },
         },
         version: s.version + 1,
       }
@@ -476,6 +560,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       invalidateRaster()
       return {
         scene,
+        canvasBaseWidth: scene.canvas.w,
+        canvasBaseHeight: scene.canvas.h,
         selection: [],
         draft: null,
         past: [],
