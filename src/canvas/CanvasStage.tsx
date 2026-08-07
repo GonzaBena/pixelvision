@@ -512,9 +512,6 @@ export function CanvasStage() {
     const fd = strokeTarget(st)
     const off = stampOffset(st.options.brushSize)
     const n = Math.max(1, Math.floor(st.options.brushSize))
-    const g = st.growToFit({ x: px - off, y: py - off, w: n, h: n })
-    px += g.dx
-    py += g.dy
     ensureFreedrawCovers(fd, { x: px - fd.x - off, y: py - fd.y - off, w: n, h: n })
     const color = parseColor(st.options.stroke)
     stampAt(fd.buf, px - fd.x, py - fd.y, st.options.brushSize, st.options.brushShape, color)
