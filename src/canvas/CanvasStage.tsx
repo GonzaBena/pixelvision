@@ -512,6 +512,17 @@ export function CanvasStage() {
     const fd = strokeTarget(st)
     const off = stampOffset(st.options.brushSize)
     const n = Math.max(1, Math.floor(st.options.brushSize))
+
+    const cw = st.scene.canvas.w
+    const ch = st.scene.canvas.h
+    const isOutside = px < 0 || py < 0 || px >= cw || py >= ch
+
+    if (isOutside) {
+      const g = st.growToFit({ x: px - off, y: py - off, w: n, h: n })
+      px += g.dx
+      py += g.dy
+    }
+
     ensureFreedrawCovers(fd, { x: px - fd.x - off, y: py - fd.y - off, w: n, h: n })
     const color = parseColor(st.options.stroke)
     stampAt(fd.buf, px - fd.x, py - fd.y, st.options.brushSize, st.options.brushShape, color)
@@ -1029,6 +1040,25 @@ export function CanvasStage() {
         if (!it.erase) {
           const off = stampOffset(st.options.brushSize)
           const n = Math.max(1, Math.floor(st.options.brushSize))
+
+          const cw = st.scene.canvas.w
+          const ch = st.scene.canvas.h
+          const isOutside = px < 0 || py < 0 || px >= cw || py >= ch
+
+          if (isOutside) {
+            const segment = {
+              x: Math.min(it.lastX, px) - off,
+              y: Math.min(it.lastY, py) - off,
+              w: Math.abs(px - it.lastX) + n,
+              h: Math.abs(py - it.lastY) + n,
+            }
+            const g = st.growToFit(segment)
+            const pt = { x: px, y: py }
+            shiftDrag(g.dx, g.dy, pt)
+            px = pt.x
+            py = pt.y
+          }
+
           ensureFreedrawCovers(el, {
             x: Math.min(it.lastX, px) - el.x - off,
             y: Math.min(it.lastY, py) - el.y - off,
