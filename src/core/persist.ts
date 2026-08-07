@@ -1,4 +1,4 @@
-import type { PixelBuffer, PVElement, Scene } from './types'
+import type { PixelBuffer, PVElement, Scene, ImageElement } from './types'
 import { clearImageSources, putImageSource, usedImageSources } from './image/imageStore'
 
 /** Ids de las imágenes que la escena realmente usa. */
@@ -191,3 +191,45 @@ export function deserializeProject(json: string): Scene {
   })
   return { canvas: { ...file.scene.canvas }, elements }
 }
+
+export interface SerializedElements {
+  format: 'pixelvision-elements'
+  version: number
+  elements: Array<Record<string, unknown>>
+  images: Array<[string, SerializedBuffer]>
+}
+
+export function serializeSelection(elements: PVElement[]): string {
+  const imageIds = elements.filter((e) => e.type === 'image').map((e) => (e as ImageElement).srcId)
+  const payload: SerializedElements = {
+    format: 'pixelvision-elements',
+    version: FORMAT_VERSION,
+    elements: elements.map((el) =>
+      el.type === 'freedraw'
+        ? { ...el, buf: serializeBuffer(el.buf) }
+        : ({ ...el } as Record<string, unknown>),
+    ),
+    images: usedImageSources(imageIds).map(([id, buf]) => [id, serializeBuffer(buf)]),
+  }
+  return JSON.stringify(payload)
+}
+
+export function deserializeSelection(json: string): { elements: PVElement[] } {
+  const payload = JSON.parse(json) as SerializedElements
+  if (payload.format !== 'pixelvision-elements') throw new Error('No es un portapapeles de PixelVision')
+
+  for (const [id, buf] of payload.images ?? []) {
+    putImageSource(id, deserializeBuffer(buf))
+  }
+
+  const elements = payload.elements.map((raw) => {
+    const el = { ...raw } as unknown as PVElement
+    if (el.type === 'freedraw') {
+      el.buf = deserializeBuffer(raw.buf as unknown as SerializedBuffer)
+    }
+    return el
+  })
+
+  return { elements }
+}
+

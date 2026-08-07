@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FreedrawElement, ImageElement, PixelBuffer, PVElement, Rect } from '../core/types'
 import { bufferBounds, cloneBuffer, createBuffer, cropBuffer, expandBuffer, parseColor, rgbaToHex } from '../core/pixels'
+import { ensureWritable } from '../core/cow'
 import { renderScene } from '../core/render/renderScene'
 import { hitTestWithSlop } from '../core/render/hitTest'
 import { elementBounds, elementsInRect, unionBounds } from '../core/render/hitTest'
-import { floodFillMask } from '../core/raster/floodfill'
 import { stampAt, stampOffset } from '../core/raster/brush'
 import { strokeLine } from '../core/raster/line'
 import {
@@ -135,10 +135,20 @@ export function CanvasStage() {
   const [cursorLabel, setCursorLabel] = useState('default')
   const [dropping, setDropping] = useState(false)
   const [loadingImage, setLoadingImage] = useState(false)
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null)
 
   const requestDraw = useRef<() => void>(() => {})
+  const requestOverlayRedraw = useRef<() => void>(() => {})
 
-  const lastFingerprint = useRef<string>('')
+  const bucketWorkerRef = useRef<Worker | null>(null)
+  const cachedComposite = useRef<{ version: number; w: number; h: number; imageData: ImageData } | null>(null)
+  useEffect(() => {
+    return () => {
+      if (bucketWorkerRef.current) {
+        bucketWorkerRef.current.terminate()
+      }
+    }
+  }, [])
 
   // --- Medición del stage -----------------------------------------------------
   useEffect(() => {
@@ -194,30 +204,26 @@ export function CanvasStage() {
   }, [])
 
   // --- Bucle de dibujo --------------------------------------------------------
-  const draw = useCallback(() => {
+
+  const drawBase = useCallback(() => {
     const base = baseRef.current
-    const overlay = overlayRef.current
     const wrap = wrapRef.current
-    if (!base || !overlay || !wrap) return
+    if (!base || !wrap) return
 
     const dpr = window.devicePixelRatio || 1
     dprRef.current = dpr
     const pxW = Math.max(1, Math.round(size.w * dpr))
     const pxH = Math.max(1, Math.round(size.h * dpr))
-    for (const c of [base, overlay]) {
-      if (c.width !== pxW || c.height !== pxH) {
-        c.width = pxW
-        c.height = pxH
-      }
+    if (base.width !== pxW || base.height !== pxH) {
+      base.width = pxW
+      base.height = pxH
     }
 
     const st = useEditor.getState()
     const t = computeTransform(st.viewport, dpr)
     const cw = st.scene.canvas.w
     const ch = st.scene.canvas.h
-    const bg = st.scene.canvas.background || ''
 
-    // Capa base: damero + escena escalada sin suavizado.
     const bctx = base.getContext('2d')
     if (!bctx) return
     bctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -232,23 +238,42 @@ export function CanvasStage() {
       off.height = ch
     }
 
-    const draftStr = st.draft ? `${st.draft.id}:${st.draft.rev}:${st.draft.hidden ? 1 : 0}` : 'none'
-    const elementsStr = st.scene.elements.map((el) => `${el.id}:${el.rev}:${el.hidden ? 1 : 0}`).join(',')
-    const pal = st.options.restrictPalette ?? 'none'
-    const fingerprint = `${cw}x${ch}bg:${bg}|pal:${pal}|draft:${draftStr}|els:${elementsStr}`
-
     const octx = off.getContext('2d')
     if (octx) {
-      if (fingerprint !== lastFingerprint.current) {
+      const cache = cachedComposite.current
+      if (!cache || cache.version !== st.version || cache.w !== cw || cache.h !== ch) {
         const buf = renderScene(st.scene, st.draft)
-        octx.putImageData(new ImageData(buf.data, cw, ch), 0, 0)
-        lastFingerprint.current = fingerprint
+        cachedComposite.current = {
+          version: st.version,
+          w: cw,
+          h: ch,
+          imageData: new ImageData(buf.data, cw, ch),
+        }
       }
+      octx.putImageData(cachedComposite.current!.imageData, 0, 0)
       bctx.drawImage(off, 0, 0, cw, ch, t.ox, t.oy, cw * t.scale, ch * t.scale)
     }
     drawCanvasBorder(bctx, t, cw, ch)
+  }, [size])
 
-    // Capa de overlay: nada de esto toca los píxeles del lienzo.
+  const drawOverlay = useCallback(() => {
+    const overlay = overlayRef.current
+    const wrap = wrapRef.current
+    if (!overlay || !wrap) return
+
+    const dpr = window.devicePixelRatio || 1
+    const pxW = Math.max(1, Math.round(size.w * dpr))
+    const pxH = Math.max(1, Math.round(size.h * dpr))
+    if (overlay.width !== pxW || overlay.height !== pxH) {
+      overlay.width = pxW
+      overlay.height = pxH
+    }
+
+    const st = useEditor.getState()
+    const t = computeTransform(st.viewport, dpr)
+    const cw = st.scene.canvas.w
+    const ch = st.scene.canvas.h
+
     const octx2 = overlay.getContext('2d')
     if (!octx2) return
     octx2.setTransform(1, 0, 0, 1, 0, 0)
@@ -263,8 +288,6 @@ export function CanvasStage() {
     const showCursor =
       c && c.x >= 0 && c.y >= 0 && c.x < cw && c.y < ch && interaction.current.kind !== 'pan'
     if (showCursor && (st.tool === 'brush' || st.tool === 'eraser')) {
-      // El borrador no tiene color que previsualizar, y durante el trazo los
-      // píxeles reales ya están pintados: en ambos casos va sólo el contorno.
       const preview =
         st.tool === 'brush' && interaction.current.kind !== 'paint' ? st.options.stroke : null
       drawBrushCursor(octx2, t, c.x, c.y, st.options.brushSize, st.options.brushShape, preview)
@@ -273,24 +296,66 @@ export function CanvasStage() {
 
   useEffect(() => {
     let raf = 0
-    const schedule = () => {
-      if (raf) return
-      raf = requestAnimationFrame(() => {
-        raf = 0
-        draw()
-      })
+    const redrawFlags = { base: false, overlay: false }
+
+    const flush = () => {
+      raf = 0
+      if (redrawFlags.base) {
+        drawBase()
+        drawOverlay()
+        redrawFlags.base = false
+        redrawFlags.overlay = false
+      } else if (redrawFlags.overlay) {
+        drawOverlay()
+        redrawFlags.overlay = false
+      }
     }
-    requestDraw.current = schedule
-    const unsub = useEditor.subscribe(schedule)
-    schedule()
-    const onDpr = () => schedule()
+
+    const scheduleBase = () => {
+      redrawFlags.base = true
+      if (!raf) raf = requestAnimationFrame(flush)
+    }
+    const scheduleOverlay = () => {
+      redrawFlags.overlay = true
+      if (!raf) raf = requestAnimationFrame(flush)
+    }
+
+    requestDraw.current = scheduleBase
+    requestOverlayRedraw.current = scheduleOverlay
+
+    const unsub = useEditor.subscribe((state, prevState) => {
+      const baseChanged =
+        state.version !== prevState.version ||
+        state.draft !== prevState.draft ||
+        state.viewport !== prevState.viewport ||
+        state.scene.canvas.w !== prevState.scene.canvas.w ||
+        state.scene.canvas.h !== prevState.scene.canvas.h ||
+        state.scene.canvas.background !== prevState.scene.canvas.background
+
+      const overlayChanged =
+        state.showGrid !== prevState.showGrid ||
+        state.showTileGrid !== prevState.showTileGrid ||
+        state.selection !== prevState.selection ||
+        state.tool !== prevState.tool ||
+        state.options.brushSize !== prevState.options.brushSize ||
+        state.options.brushShape !== prevState.options.brushShape
+
+      if (baseChanged) {
+        scheduleBase()
+      } else if (overlayChanged) {
+        scheduleOverlay()
+      }
+    })
+
+    scheduleBase()
+    const onDpr = () => scheduleBase()
     window.addEventListener('resize', onDpr)
     return () => {
       unsub()
       window.removeEventListener('resize', onDpr)
       if (raf) cancelAnimationFrame(raf)
     }
-  }, [draw])
+  }, [drawBase, drawOverlay])
 
   // --- Utilidades de coordenadas ---------------------------------------------
   const getTransform = (): ViewTransform =>
@@ -376,6 +441,7 @@ export function CanvasStage() {
    * propio origen) entre entero, reanclando el elemento si creció hacia
    * arriba/izquierda. */
   const ensureFreedrawCovers = (fd: FreedrawElement, localRect: Rect) => {
+    fd.buf = ensureWritable(fd.buf)
     const grown = expandBuffer(fd.buf, localRect)
     if (grown.buf === fd.buf) return
     fd.buf = grown.buf
@@ -399,6 +465,7 @@ export function CanvasStage() {
         target = flat
       }
       const fd = target as FreedrawElement
+      fd.buf = ensureWritable(fd.buf)
       stampAt(fd.buf, px - fd.x, py - fd.y, st.options.brushSize, st.options.brushShape, [0, 0, 0, 0], true)
       st.touch(fd.id)
       interaction.current = {
@@ -454,15 +521,63 @@ export function CanvasStage() {
 
   const doBucket = (st: EditorState, px: number, py: number) => {
     const composed = renderScene(st.scene)
-    const mask = floodFillMask(composed, px, py, st.options.tolerance)
-    const el = freedrawFromMask(mask, st.options.stroke, 0, 0, st.options.restrictPalette)
-    if (!el) return
-    el.opacity = st.options.opacity
-    st.pushHistory()
-    st.addElement(el)
-    st.pushRecentColor(st.options.stroke)
-    // El balde produce un objeto nuevo, así que corta el grupo de trazos activo.
-    strokeGroup.current = null
+    st.setIsProcessing(true)
+    const strokeColor = st.options.stroke
+    const restrictPalette = st.options.restrictPalette
+    const opacity = st.options.opacity
+
+    if (!bucketWorkerRef.current) {
+      bucketWorkerRef.current = new Worker(
+        new URL('../core/raster/raster.worker.ts', import.meta.url),
+        { type: 'module' }
+      )
+    }
+
+    const worker = bucketWorkerRef.current
+    const bufToSend = {
+      w: composed.w,
+      h: composed.h,
+      data: composed.data,
+    }
+
+    worker.onmessage = (e: MessageEvent) => {
+      st.setIsProcessing(false)
+      const { empty, dx, dy, w, h, data } = e.data
+      if (empty) return
+
+      const croppedMask = {
+        w,
+        h,
+        data,
+      }
+
+      const el = freedrawFromMask(croppedMask, strokeColor, dx, dy, restrictPalette)
+      if (!el) return
+      el.opacity = opacity
+
+      const currentSt = useEditor.getState()
+      currentSt.pushHistory()
+      currentSt.addElement(el)
+      currentSt.pushRecentColor(strokeColor)
+      // El balde produce un objeto nuevo, así que corta el grupo de trazos activo.
+      strokeGroup.current = null
+    }
+
+    worker.onerror = (err) => {
+      console.error('Worker error in flood fill:', err)
+      st.setIsProcessing(false)
+    }
+
+    worker.postMessage(
+      {
+        type: 'floodfill',
+        buf: bufToSend,
+        startX: px,
+        startY: py,
+        tolerance: st.options.tolerance,
+      },
+      [bufToSend.data.buffer] as any
+    )
   }
 
   const doEyedropper = (st: EditorState, px: number, py: number) => {
@@ -512,6 +627,7 @@ export function CanvasStage() {
 
   const onPointerDown = (e: React.PointerEvent) => {
     const st = useEditor.getState()
+    if (st.isProcessing) return
     const css = localCss(e)
     const p = toPixel(e)
 
@@ -779,7 +895,21 @@ export function CanvasStage() {
     const p = toPixel(e)
     const prev = cursorPx.current
     cursorPx.current = p
-    if (!prev || prev.x !== p.x || prev.y !== p.y) requestDraw.current()
+    if (!prev || prev.x !== p.x || prev.y !== p.y) requestOverlayRedraw.current()
+
+    if (it.kind !== 'move' && it.kind !== 'pan') {
+      const cw = st.scene.canvas.w
+      const ch = st.scene.canvas.h
+      if (p.x >= 0 && p.x < cw && p.y >= 0 && p.y < ch) {
+        setTooltip({
+          x: css.x,
+          y: css.y,
+          text: `X: ${p.x}, Y: ${p.y}`,
+        })
+      } else {
+        setTooltip(null)
+      }
+    }
 
     switch (it.kind) {
       case 'pan': {
@@ -914,6 +1044,17 @@ export function CanvasStage() {
         )
         it.lastX = px
         it.lastY = py
+
+        if (it.erase) {
+          const bounds = bufferBounds(el.buf)
+          if (!bounds) {
+            st.removeElements([el.id])
+            interaction.current = { kind: 'none' }
+            setTooltip(null)
+            return
+          }
+        }
+
         st.touch(el.id)
         return
       }
@@ -977,6 +1118,12 @@ export function CanvasStage() {
         if (bounds) {
           const g = st.growToFit(bounds)
           shiftDrag(g.dx, g.dy, p)
+          const css = localCss(e)
+          setTooltip({
+            x: css.x,
+            y: css.y,
+            text: `X: ${bounds.x}, Y: ${bounds.y}`,
+          })
         }
         return
       }
@@ -996,7 +1143,7 @@ export function CanvasStage() {
 
       case 'marquee': {
         marquee.current = normalizeRect(it.sx, it.sy, p.x, p.y)
-        requestDraw.current()
+        requestOverlayRedraw.current()
         return
       }
 
@@ -1058,13 +1205,15 @@ export function CanvasStage() {
       st.setSelection(e.shiftKey ? Array.from(new Set([...st.selection, ...picked])) : picked)
       marquee.current = null
     }
+    setTooltip(null)
     interaction.current = { kind: 'none' }
     requestDraw.current()
   }
 
   const onPointerLeave = () => {
     cursorPx.current = null
-    requestDraw.current()
+    setTooltip(null)
+    requestOverlayRedraw.current()
   }
 
   // --- Manejo del trackpad y rueda de mouse (Zoom y Paneo de 2 dedos) ---------
@@ -1251,6 +1400,7 @@ export function CanvasStage() {
   }
 
   const tool = useEditor((s) => s.tool)
+  const isProcessing = useEditor((s) => s.isProcessing)
   const cssCursor =
     cursorLabel === 'grab'
       ? 'grab'
@@ -1288,6 +1438,17 @@ export function CanvasStage() {
         <div className="stage__loading">
           <div className="stage__loading-spinner" />
           <span>Cargando imagen...</span>
+        </div>
+      )}
+      {isProcessing && (
+        <div className="stage__loading">
+          <div className="stage__loading-spinner" />
+          <span>Rellenando...</span>
+        </div>
+      )}
+      {tooltip && (
+        <div className="stage__tooltip">
+          {tooltip.text}
         </div>
       )}
     </div>

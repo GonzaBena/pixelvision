@@ -9,7 +9,7 @@ import { ShortcutsHelp } from './ui/ShortcutsHelp'
 import { useEditor } from './state/store'
 import { cloneBuffer } from './core/pixels'
 import { newId } from './core/elements'
-import { loadAutosave, saveAutosave } from './core/persist'
+import { loadAutosave, saveAutosave, serializeSelection, deserializeSelection } from './core/persist'
 import { decodeImageBlob, newSourceId, putImageSource } from './core/image/imageStore'
 import { suggestScaleMode } from './core/image/processImage'
 import { fitToView } from './canvas/viewport'
@@ -80,6 +80,51 @@ export default function App() {
       if (isTyping(e.target)) return
       const st = useEditor.getState()
       const mod = e.ctrlKey || e.metaKey
+
+      if (mod && e.key.toLowerCase() === 'c') {
+        if (st.selection.length === 0) return
+        e.preventDefault()
+        const selectedElements = st.scene.elements.filter((el) => st.selection.includes(el.id))
+        const json = serializeSelection(selectedElements)
+        void navigator.clipboard.writeText(json).catch(() => {})
+        ;(window as any)._pvClipboard = json
+        return
+      }
+
+      if (mod && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        const pasteElements = (json: string) => {
+          try {
+            const { elements } = deserializeSelection(json)
+            if (elements.length === 0) return
+            st.pushHistory()
+            const copies = elements.map((el) =>
+              el.type === 'freedraw'
+                ? { ...el, id: newId(), buf: cloneBuffer(el.buf), x: el.x + 10, y: el.y + 10 }
+                : { ...el, id: newId(), x: el.x + 10, y: el.y + 10 },
+            )
+            for (const c of copies) st.addElement(c)
+            st.setSelection(copies.map((c) => c.id))
+          } catch (err) {
+            console.error('Error al pegar elementos:', err)
+          }
+        }
+
+        navigator.clipboard.readText()
+          .then((text) => {
+            if (text && text.includes('pixelvision-elements')) {
+              pasteElements(text)
+            } else if ((window as any)._pvClipboard) {
+              pasteElements((window as any)._pvClipboard)
+            }
+          })
+          .catch(() => {
+            if ((window as any)._pvClipboard) {
+              pasteElements((window as any)._pvClipboard)
+            }
+          })
+        return
+      }
 
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault()

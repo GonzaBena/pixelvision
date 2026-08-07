@@ -27,12 +27,32 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmingClear, setConfirmingClear] = useState(false)
   const [openError, setOpenError] = useState<string | null>(null)
+  const [exportScale, setExportScale] = useState(1)
+  const [estimatedSizeKb, setEstimatedSizeKb] = useState<number | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const showGrid = useEditor((s) => s.showGrid)
   const tileGrid = useEditor((s) => s.showTileGrid)
   const version = useEditor((s) => s.version)
-  void version
+
+  useEffect(() => {
+    if (!menuOpen) return
+    let active = true
+    const updateSize = async () => {
+      try {
+        const blob = await exportPNG(useEditor.getState().scene, exportScale)
+        if (active) {
+          setEstimatedSizeKb(blob.size / 1024)
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    void updateSize()
+    return () => {
+      active = false
+    }
+  }, [exportScale, version, menuOpen])
 
   useEffect(() => {
     if (!menuOpen) {
@@ -133,12 +153,29 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
             <div className="menu__sep" />
             <div className="menu__title">Exportar PNG</div>
             <div className="menu__chips">
-              {[1, 2, 4, 8, 16].map((k) => (
-                <button key={k} type="button" className="chip" onClick={() => void doExport(k)}>
+              {[1, 2, 4, 8].map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`chip${exportScale === k ? ' chip--active' : ''}`}
+                  onClick={() => setExportScale(k)}
+                >
                   {k}×
                 </button>
               ))}
             </div>
+            <div className="menu__export-info">
+              <div>Dimensiones: <strong>{canvas.w * exportScale} × {canvas.h * exportScale} px</strong></div>
+              <div>Peso est.: <strong>{estimatedSizeKb !== null ? `${estimatedSizeKb.toFixed(1)} KB` : '...'}</strong></div>
+            </div>
+            <button
+              type="button"
+              className="menu__item"
+              style={{ fontWeight: 600, color: 'var(--accent)', justifyContent: 'center' }}
+              onClick={() => void doExport(exportScale)}
+            >
+              <IconDownload size={16} /> Descargar PNG
+            </button>
 
             <div className="menu__sep" />
             <button type="button" className="menu__item" onClick={doSave}>

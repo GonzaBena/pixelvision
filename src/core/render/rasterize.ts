@@ -1,4 +1,4 @@
-import type { Mask, PixelBuffer, PVElement, Rect } from '../types'
+import type { Mask, PixelBuffer, PVElement, Rect, ImageElement } from '../types'
 import {
   cloneBuffer,
   createBuffer,
@@ -20,8 +20,9 @@ import {
 import { strokeArrowHead, strokeLine } from '../raster/line'
 import { stampOffset } from '../raster/brush'
 import { renderText } from '../text/renderText'
-import { processImageElement } from '../image/processImage'
+import { processImageElement, processImage } from '../image/processImage'
 import { getImageSource } from '../image/imageStore'
+import { useEditor } from '../../state/store'
 
 export interface RasterResult {
   buf: PixelBuffer
@@ -31,6 +32,8 @@ export interface RasterResult {
 }
 
 const cache = new Map<string, { rev: number; result: RasterResult }>()
+const quantizedCache = new Map<string, { key: string; buf: PixelBuffer }>()
+const activeQuantizations = new Set<string>()
 
 export function invalidateRaster(id?: string): void {
   if (id) cache.delete(id)
@@ -43,6 +46,59 @@ export function pruneRasterCache(liveIds: Iterable<string>): void {
   for (const id of Array.from(cache.keys())) {
     if (!keep.has(id)) cache.delete(id)
   }
+  for (const id of Array.from(quantizedCache.keys())) {
+    if (!keep.has(id)) quantizedCache.delete(id)
+  }
+}
+
+function triggerAsyncQuantize(el: ImageElement, src: PixelBuffer, cacheKey: string) {
+  if (activeQuantizations.has(cacheKey)) return
+  activeQuantizations.add(cacheKey)
+
+  const st = useEditor.getState()
+  st.setIsProcessing(true)
+
+  const tempBuf = processImage(src, {
+    w: el.w,
+    h: el.h,
+    alphaThreshold: el.alphaThreshold,
+    scaleMode: el.scaleMode,
+    quantize: null,
+  })
+
+  const worker = new Worker(
+    new URL('../raster/raster.worker.ts', import.meta.url),
+    { type: 'module' }
+  )
+
+  worker.onmessage = (e: MessageEvent) => {
+    st.setIsProcessing(false)
+    activeQuantizations.delete(cacheKey)
+
+    const { buf } = e.data
+    const revivedBuf = { w: buf.w, h: buf.h, data: buf.data }
+
+    quantizedCache.set(el.id, { key: cacheKey, buf: revivedBuf })
+
+    useEditor.getState().touch(el.id)
+    worker.terminate()
+  }
+
+  worker.onerror = (err) => {
+    console.error('Quantization worker error:', err)
+    st.setIsProcessing(false)
+    activeQuantizations.delete(cacheKey)
+    worker.terminate()
+  }
+
+  worker.postMessage(
+    {
+      type: 'quantize',
+      buf: tempBuf,
+      count: el.quantize,
+    },
+    [tempBuf.data.buffer] as any
+  )
 }
 
 export function rasterizeElement(el: PVElement): RasterResult {
@@ -131,6 +187,26 @@ function rasterizeBase(el: PVElement): RasterResult {
     case 'image': {
       const src = getImageSource(el.srcId)
       if (!src) return { buf: createBuffer(el.w, el.h), x: el.x, y: el.y }
+
+      if (el.quantize && el.quantize > 0) {
+        const cacheKey = `${el.srcId}_${el.w}x${el.h}_${el.scaleMode}_${el.alphaThreshold}_${el.quantize}`
+        const hit = quantizedCache.get(el.id)
+        if (hit && hit.key === cacheKey) {
+          return { buf: hit.buf, x: el.x, y: el.y }
+        }
+
+        triggerAsyncQuantize(el, src, cacheKey)
+
+        const unquantized = processImage(src, {
+          w: el.w,
+          h: el.h,
+          alphaThreshold: el.alphaThreshold,
+          scaleMode: el.scaleMode,
+          quantize: null,
+        })
+        return { buf: unquantized, x: el.x, y: el.y }
+      }
+
       return { buf: processImageElement(el, src), x: el.x, y: el.y }
     }
   }

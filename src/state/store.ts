@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { PVElement, Rect, Scene } from '../core/types'
-import { cloneBuffer, parseColor, rgbaToHex } from '../core/pixels'
+import { parseColor, rgbaToHex } from '../core/pixels'
+import { freezeBuffer } from '../core/cow'
 import { DEFAULT_TOOL_OPTIONS, type ToolOptions } from '../core/elements'
 import { invalidateRaster } from '../core/render/rasterize'
 import { getPalette } from '../core/palettes'
@@ -41,15 +42,6 @@ const HISTORY_LIMIT = 80
  */
 const MAX_CANVAS_DIM = 4096
 
-function cloneElement(el: PVElement): PVElement {
-  if (el.type === 'freedraw') return { ...el, buf: cloneBuffer(el.buf) }
-  return { ...el }
-}
-
-function cloneScene(s: Scene): Scene {
-  return { canvas: { ...s.canvas }, elements: s.elements.map(cloneElement) }
-}
-
 const isDarkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
 
 function initialScene(): Scene {
@@ -79,6 +71,7 @@ export interface EditorState {
   future: Scene[]
   /** Id del texto que se está editando en el overlay, si hay alguno. */
   editingTextId: string | null
+  isProcessing: boolean
 
   // Acciones -----------------------------------------------------------------
   pushHistory: () => void
@@ -115,6 +108,7 @@ export interface EditorState {
   setEditingText: (id: string | null) => void
   getElement: (id: string) => PVElement | undefined
   pushRecentColor: (color: string) => void
+  setIsProcessing: (v: boolean) => void
 }
 
 const SETTINGS_KEY = 'pixelvision_tool_settings_v1'
@@ -179,10 +173,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   past: [],
   future: [],
   editingTextId: null,
+  isProcessing: false,
 
   pushHistory: () =>
     set((s) => {
-      const past = [...s.past, cloneScene(s.scene)]
+      // Congelar los buffers de los elementos freedraw actuales para Copy-On-Write
+      for (const el of s.scene.elements) {
+        if (el.type === 'freedraw') freezeBuffer(el.buf)
+      }
+      const past = [...s.past, s.scene]
       if (past.length > HISTORY_LIMIT) past.shift()
       return { past, future: [] }
     }),
@@ -191,13 +190,21 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       if (s.past.length === 0) return {}
       const prev = s.past[s.past.length - 1]
-      // El caché de rasterizado se indexa por (id, rev); tras saltar en el
-      // historial esa clave puede apuntar a contenido de otra rama, así que se
-      // descarta entero. Es barato: el lienzo se re-rasteriza en un frame.
-      invalidateRaster()
+      
+      // Invalidación selectiva: diff entre escenas
+      const mapCurr = new Map(s.scene.elements.map((e) => [e.id, e.rev]))
+      const mapPrev = new Map(prev.elements.map((e) => [e.id, e.rev]))
+      for (const [id, revCurr] of mapCurr.entries()) {
+        const revPrev = mapPrev.get(id)
+        if (revPrev === undefined || revPrev !== revCurr) invalidateRaster(id)
+      }
+      for (const id of mapPrev.keys()) {
+        if (!mapCurr.has(id)) invalidateRaster(id)
+      }
+
       return {
         past: s.past.slice(0, -1),
-        future: [cloneScene(s.scene), ...s.future].slice(0, HISTORY_LIMIT),
+        future: [s.scene, ...s.future].slice(0, HISTORY_LIMIT),
         scene: prev,
         selection: [],
         draft: null,
@@ -210,9 +217,20 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       if (s.future.length === 0) return {}
       const next = s.future[0]
-      invalidateRaster()
+      
+      // Invalidación selectiva: diff entre escenas
+      const mapCurr = new Map(s.scene.elements.map((e) => [e.id, e.rev]))
+      const mapNext = new Map(next.elements.map((e) => [e.id, e.rev]))
+      for (const [id, revCurr] of mapCurr.entries()) {
+        const revNext = mapNext.get(id)
+        if (revNext === undefined || revNext !== revCurr) invalidateRaster(id)
+      }
+      for (const id of mapNext.keys()) {
+        if (!mapCurr.has(id)) invalidateRaster(id)
+      }
+
       return {
-        past: [...s.past, cloneScene(s.scene)].slice(-HISTORY_LIMIT),
+        past: [...s.past, s.scene].slice(-HISTORY_LIMIT),
         future: s.future.slice(1),
         scene: next,
         selection: [],
@@ -225,8 +243,18 @@ export const useEditor = create<EditorState>((set, get) => ({
   touch: (id) =>
     set((s) => {
       if (id) {
-        const el = s.scene.elements.find((e) => e.id === id) ?? (s.draft?.id === id ? s.draft : null)
-        if (el) el.rev += 1
+        const elements = s.scene.elements.map((el) => {
+          if (el.id === id) {
+            return { ...el, rev: el.rev + 1 } as PVElement
+          }
+          return el
+        })
+        const draft = s.draft?.id === id ? ({ ...s.draft, rev: s.draft.rev + 1 } as PVElement) : s.draft
+        return {
+          scene: { ...s.scene, elements },
+          draft,
+          version: s.version + 1,
+        }
       }
       return { version: s.version + 1 }
     }),
@@ -234,8 +262,6 @@ export const useEditor = create<EditorState>((set, get) => ({
   setTool: (tool) =>
     set((s) => ({
       tool,
-      // Salir de selección con algo seleccionado y volver a dibujar no debería
-      // arrastrar los handles de la selección anterior.
       selection: tool === 'select' ? s.selection : [],
       editingTextId: null,
       draft: null,
@@ -258,25 +284,32 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       const options = { ...s.options, restrictPalette }
       persistSettings({ restrictPalette, options })
+      let elements = s.scene.elements
       if (s.selection.length > 0) {
-        for (const id of s.selection) {
-          const el = s.scene.elements.find((e) => e.id === id)
-          if (el) {
-            el.restrictPalette = restrictPalette
-            el.rev += 1
+        const sel = new Set(s.selection)
+        elements = s.scene.elements.map((el) => {
+          if (sel.has(el.id)) {
             invalidateRaster(el.id)
+            return { ...el, restrictPalette, rev: el.rev + 1 } as PVElement
           }
-        }
+          return el
+        })
       }
-      return { restrictPalette, options, version: s.version + 1 }
+      return {
+        restrictPalette,
+        options,
+        scene: { ...s.scene, elements },
+        version: s.version + 1,
+      }
     }),
 
   setDraft: (draft) => set((s) => ({ draft, version: s.version + 1 })),
 
   addElement: (el, select = false) =>
     set((s) => {
-      s.scene.elements.push(el)
+      const elements = [...s.scene.elements, el]
       return {
+        scene: { ...s.scene, elements },
         version: s.version + 1,
         selection: select ? [el.id] : s.selection,
       }
@@ -284,21 +317,27 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   updateElement: (id, patch) =>
     set((s) => {
-      const el = s.scene.elements.find((e) => e.id === id)
-      if (!el) return {}
-      Object.assign(el, patch)
-      el.rev += 1
-      invalidateRaster(id)
-      return { version: s.version + 1 }
+      const elements = s.scene.elements.map((e) => {
+        if (e.id === id) {
+          const next = { ...e, ...patch }
+          next.rev += 1
+          invalidateRaster(id)
+          return next as PVElement
+        }
+        return e
+      })
+      return {
+        scene: { ...s.scene, elements },
+        version: s.version + 1,
+      }
     }),
 
   replaceElement: (id, next) =>
     set((s) => {
-      const i = s.scene.elements.findIndex((e) => e.id === id)
-      if (i < 0) return {}
-      s.scene.elements[i] = next
+      const elements = s.scene.elements.map((e) => (e.id === id ? next : e))
       invalidateRaster(id)
       return {
+        scene: { ...s.scene, elements },
         version: s.version + 1,
         selection: s.selection.map((sid) => (sid === id ? next.id : sid)),
       }
@@ -307,12 +346,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   removeElements: (ids) =>
     set((s) => {
       const kill = new Set(ids)
-      s.scene.elements = s.scene.elements.filter((e) => !kill.has(e.id))
+      const elements = s.scene.elements.filter((e) => !kill.has(e.id))
       for (const id of ids) invalidateRaster(id)
-      // Las fuentes de imagen NO se descartan acá: el historial todavía guarda
-      // elementos que las referencian, y deshacer un borrado tiene que devolver
-      // la imagen con sus píxeles, no un hueco vacío.
       return {
+        scene: { ...s.scene, elements },
         version: s.version + 1,
         selection: s.selection.filter((id) => !kill.has(id)),
       }
@@ -320,7 +357,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   reorder: (id, delta) =>
     set((s) => {
-      const els = s.scene.elements
+      const els: PVElement[] = [...s.scene.elements]
       const i = els.findIndex((e) => e.id === id)
       if (i < 0) return {}
       const [el] = els.splice(i, 1)
@@ -329,7 +366,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       else if (delta === 'back') j = 0
       else j = Math.max(0, Math.min(els.length, i + delta))
       els.splice(j, 0, el)
-      return { version: s.version + 1 }
+      return {
+        scene: { ...s.scene, elements: els },
+        version: s.version + 1,
+      }
     }),
 
   setSelection: (selection) => set({ selection }),
@@ -350,17 +390,26 @@ export const useEditor = create<EditorState>((set, get) => ({
   clearCanvas: () => {
     get().pushHistory()
     set((s) => {
-      s.scene.elements = []
       invalidateRaster()
-      return { version: s.version + 1, selection: [], draft: null }
+      return {
+        scene: { ...s.scene, elements: [] },
+        version: s.version + 1,
+        selection: [],
+        draft: null,
+      }
     })
   },
 
   setCanvasSize: (w, h) => {
     get().pushHistory()
     set((s) => {
-      s.scene.canvas = { ...s.scene.canvas, w: Math.max(1, w), h: Math.max(1, h) }
-      return { version: s.version + 1 }
+      return {
+        scene: {
+          ...s.scene,
+          canvas: { ...s.scene.canvas, w: Math.max(1, w), h: Math.max(1, h) },
+        },
+        version: s.version + 1,
+      }
     })
   },
 
@@ -381,23 +430,25 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (dx === 0 && dy === 0 && nw === cw && nh === ch) return {}
 
       shift = { dx, dy }
+      let elements = s.scene.elements
+      let draft = s.draft
       if (dx !== 0 || dy !== 0) {
-        // Correr todo lo existente mantiene su posición visual: el origen del
-        // lienzo es siempre (0,0), así que si crece hacia arriba/izquierda es
-        // el contenido el que tiene que correrse hacia abajo/derecha.
-        for (const el of s.scene.elements) {
-          el.x += dx
-          el.y += dy
-          el.rev += 1
-        }
-        if (s.draft) {
-          s.draft.x += dx
-          s.draft.y += dy
-          s.draft.rev += 1
+        elements = s.scene.elements.map((el) => {
+          const next = { ...el, x: el.x + dx }
+          next.rev += 1
+          return next as PVElement
+        })
+        if (draft) {
+          draft = { ...draft, x: draft.x + dx } as PVElement
+          draft.rev += 1
         }
       }
-      s.scene.canvas = { ...s.scene.canvas, w: nw, h: nh }
       return {
+        scene: {
+          canvas: { ...s.scene.canvas, w: nw, h: nh },
+          elements,
+        },
+        draft,
         version: s.version + 1,
         viewport: {
           ...s.viewport,
@@ -409,13 +460,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     return shift
   },
 
-  // No empuja historial por su cuenta: el selector de color dispara un cambio
-  // por cada movimiento del cursor y llenaría la pila de entradas basura. Quien
-  // llama empuja una sola vez, al empezar la interacción.
   setBackground: (background) =>
     set((s) => {
-      s.scene.canvas = { ...s.scene.canvas, background }
-      return { version: s.version + 1 }
+      return {
+        scene: {
+          ...s.scene,
+          canvas: { ...s.scene.canvas, background },
+        },
+        version: s.version + 1,
+      }
     }),
 
   loadScene: (scene) =>
@@ -442,6 +495,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       persistSettings({ recentColors })
       return { recentColors }
     }),
+
+  setIsProcessing: (isProcessing) => set({ isProcessing }),
 }))
 
 /** Caja de selección combinada, en coordenadas de píxel del lienzo. */
