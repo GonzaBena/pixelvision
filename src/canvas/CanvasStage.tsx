@@ -441,8 +441,28 @@ export function CanvasStage() {
    * propio origen) entre entero, reanclando el elemento si creció hacia
    * arriba/izquierda. */
   const ensureFreedrawCovers = (fd: FreedrawElement, localRect: Rect) => {
+    const st = useEditor.getState()
+    const cw = st.scene.canvas.w
+    const ch = st.scene.canvas.h
+
+    const gx = localRect.x + fd.x
+    const gy = localRect.y + fd.y
+    const x0 = Math.max(0, gx)
+    const y0 = Math.max(0, gy)
+    const x1 = Math.min(cw, gx + localRect.w)
+    const y1 = Math.min(ch, gy + localRect.h)
+
+    if (x1 <= x0 || y1 <= y0) return
+
+    const croppedLocal = {
+      x: x0 - fd.x,
+      y: y0 - fd.y,
+      w: x1 - x0,
+      h: y1 - y0,
+    }
+
     fd.buf = ensureWritable(fd.buf)
-    const grown = expandBuffer(fd.buf, localRect)
+    const grown = expandBuffer(fd.buf, croppedLocal)
     if (grown.buf === fd.buf) return
     fd.buf = grown.buf
     fd.x -= grown.dx
@@ -1012,17 +1032,6 @@ export function CanvasStage() {
         if (!it.erase) {
           const off = stampOffset(st.options.brushSize)
           const n = Math.max(1, Math.floor(st.options.brushSize))
-          const segment = {
-            x: Math.min(it.lastX, px) - off,
-            y: Math.min(it.lastY, py) - off,
-            w: Math.abs(px - it.lastX) + n,
-            h: Math.abs(py - it.lastY) + n,
-          }
-          const g = st.growToFit(segment)
-          const pt = { x: px, y: py }
-          shiftDrag(g.dx, g.dy, pt)
-          px = pt.x
-          py = pt.y
           ensureFreedrawCovers(el, {
             x: Math.min(it.lastX, px) - el.x - off,
             y: Math.min(it.lastY, py) - el.y - off,
