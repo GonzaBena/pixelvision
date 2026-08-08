@@ -270,3 +270,134 @@ export function drawBrushCursor(
   ctx.stroke(path)
   ctx.restore()
 }
+
+export function drawMeasureOverlay(
+  ctx: CanvasRenderingContext2D,
+  t: ViewTransform,
+  pts: { sx: number; sy: number; ex: number; ey: number }
+): void {
+  const { sx, sy, ex, ey } = pts
+  const dpr = t.dpr
+  const lw = Math.max(1, Math.round(dpr))
+  
+  // Transform coordinates to screen pixels (center of pixel)
+  const startX = t.ox + sx * t.scale + t.scale / 2
+  const startY = t.oy + sy * t.scale + t.scale / 2
+  const endX = t.ox + ex * t.scale + t.scale / 2
+  const endY = t.oy + ey * t.scale + t.scale / 2
+  
+  const dx = ex - sx
+  const dy = ey - sy
+  const dist = Math.hypot(dx, dy)
+  
+  ctx.save()
+  
+  // 1. Dotted helper lines for X and Y components
+  ctx.strokeStyle = 'rgba(236, 72, 153, 0.45)' // Pink with transparency
+  ctx.lineWidth = lw
+  ctx.setLineDash([4 * dpr, 3 * dpr])
+  
+  if (dx !== 0) {
+    ctx.beginPath()
+    ctx.moveTo(startX, startY)
+    ctx.lineTo(endX, startY)
+    ctx.stroke()
+  }
+  
+  if (dy !== 0) {
+    ctx.beginPath()
+    ctx.moveTo(endX, startY)
+    ctx.lineTo(endX, endY)
+    ctx.stroke()
+  }
+  
+  ctx.setLineDash([])
+  
+  // 2. Direct distance diagonal line
+  ctx.strokeStyle = '#ec4899' // Solid pink
+  ctx.lineWidth = Math.max(2, 2 * dpr)
+  ctx.beginPath()
+  ctx.moveTo(startX, startY)
+  ctx.lineTo(endX, endY)
+  ctx.stroke()
+  
+  // 3. Extent marker points
+  ctx.fillStyle = '#ec4899'
+  ctx.beginPath()
+  ctx.arc(startX, startY, 4 * dpr, 0, Math.PI * 2)
+  ctx.fill()
+  
+  ctx.fillStyle = '#ffffff'
+  ctx.strokeStyle = '#ec4899'
+  ctx.lineWidth = lw * 1.5
+  ctx.beginPath()
+  ctx.arc(endX, endY, 5 * dpr, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  
+  // 4. Draw labels
+  ctx.font = `${Math.max(10, Math.round(11 * dpr))}px system-ui, sans-serif`
+  ctx.textBaseline = 'middle'
+  ctx.textAlign = 'center'
+  
+  const drawLabel = (text: string, tx: number, ty: number) => {
+    const textWidth = ctx.measureText(text).width
+    const paddingX = 6 * dpr
+    const paddingY = 4 * dpr
+    const rectW = textWidth + paddingX * 2
+    const rectH = Math.max(10, Math.round(11 * dpr)) + paddingY * 2
+    const rx = tx - rectW / 2
+    const ry = ty - rectH / 2
+    
+    // Draw bubble
+    ctx.fillStyle = 'rgba(30, 30, 40, 0.85)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'
+    ctx.lineWidth = lw
+    ctx.beginPath()
+    if (ctx.roundRect) {
+      ctx.roundRect(rx, ry, rectW, rectH, 4 * dpr)
+    } else {
+      ctx.rect(rx, ry, rectW, rectH)
+    }
+    ctx.fill()
+    ctx.stroke()
+    
+    // Draw text inside bubble
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(text, tx, ty)
+  }
+  
+  // DX label (horizontal center)
+  if (dx !== 0) {
+    const labelX = (startX + endX) / 2
+    const labelY = startY + (dy >= 0 ? -12 * dpr : 12 * dpr)
+    drawLabel(`ΔX: ${Math.abs(dx)} px`, labelX, labelY)
+  }
+  
+  // DY label (vertical center)
+  if (dy !== 0) {
+    const labelX = endX + (dx >= 0 ? 34 * dpr : -34 * dpr)
+    const labelY = (startY + endY) / 2
+    drawLabel(`ΔY: ${Math.abs(dy)} px`, labelX, labelY)
+  }
+  
+  // Diagonal distance label (D)
+  if (dist > 0 && dx !== 0 && dy !== 0) {
+    const labelX = (startX + endX) / 2
+    const labelY = (startY + endY) / 2
+    const angle = Math.atan2(dy, dx)
+    const perpAngle = angle + Math.PI / 2
+    const offsetDist = 18 * dpr
+    const shiftedX = labelX + Math.cos(perpAngle) * offsetDist
+    const shiftedY = labelY + Math.sin(perpAngle) * offsetDist
+    drawLabel(`D: ${dist.toFixed(1)} px`, shiftedX, shiftedY)
+  } else if (dist > 0) {
+    // Purely horizontal or vertical distance
+    const labelX = (startX + endX) / 2
+    const labelY = (startY + endY) / 2
+    const offset = dx !== 0 ? (dy >= 0 ? -12 * dpr : 12 * dpr) : (dx >= 0 ? 34 * dpr : -34 * dpr)
+    drawLabel(`D: ${dist.toFixed(1)} px`, labelX + (dx !== 0 ? 0 : offset), labelY + (dy !== 0 ? 0 : offset))
+  }
+  
+  ctx.restore()
+}

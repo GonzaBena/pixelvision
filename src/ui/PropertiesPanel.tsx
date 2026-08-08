@@ -54,7 +54,7 @@ export function PropertiesPanel({ open = false, onClose }: PropertiesPanelProps)
 
   // El fondo del lienzo se muestra siempre: pertenece al lienzo, no a la
   // herramienta, y es lo primero que alguien busca al abrir la app.
-  const showDrawingOptions = !(tool === 'hand' || (tool === 'select' && selected.length === 0))
+  const showDrawingOptions = !(tool === 'hand' || tool === 'measure' || (tool === 'select' && selected.length === 0))
 
   /** Aplica un cambio de color tanto a la herramienta como a lo seleccionado. */
   const applyColor = (key: 'stroke' | 'fill', v: string | null) => {

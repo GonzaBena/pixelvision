@@ -13,6 +13,7 @@ import {
   IconHexagon,
   IconImage,
   IconLine,
+  IconMeasure,
   IconRect,
   IconRedo,
   IconSelect,
@@ -34,6 +35,7 @@ export const TOOLS: ToolDef[][] = [
   [
     { id: 'select', label: 'Seleccionar', key: 'V', icon: <IconSelect /> },
     { id: 'hand', label: 'Mano', key: 'H', icon: <IconHand /> },
+    { id: 'measure', label: 'Medir', key: 'M', icon: <IconMeasure /> },
   ],
   [
     { id: 'brush', label: 'Pincel', key: 'B', icon: <IconBrush /> },

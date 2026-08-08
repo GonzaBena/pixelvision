@@ -6,6 +6,7 @@ const GROUPS: Array<{ title: string; items: Array<[string, string]> }> = [
     items: [
       ['V', 'Seleccionar'],
       ['H', 'Mano (mover la vista)'],
+      ['M', 'Medir'],
       ['B', 'Pincel'],
       ['E', 'Borrador'],
       ['G', 'Balde'],

@@ -24,6 +24,7 @@ export type ToolId =
   | 'star'
   | 'hexagon'
   | 'text'
+  | 'measure'
 
 export type EraserMode = 'object' | 'pixel'
 

@@ -39,6 +39,7 @@ import {
   drawGrid,
   drawMarquee,
   drawSelection,
+  drawMeasureOverlay,
   handlePositions,
   handleRadius,
   HANDLE_IDS,
@@ -87,6 +88,7 @@ type Interaction =
       pushedHistory: boolean
     }
   | { kind: 'marquee'; pointerId: number; sx: number; sy: number }
+  | { kind: 'measure'; pointerId: number; sx: number; sy: number }
 
 const SHAPE_TOOLS = new Set(['rect', 'ellipse', 'triangle', 'diamond', 'star', 'hexagon'])
 const LINE_TOOLS = new Set(['line', 'arrow'])
@@ -117,6 +119,7 @@ export function CanvasStage() {
   const interaction = useRef<Interaction>({ kind: 'none' })
   const cursorPx = useRef<{ x: number; y: number } | null>(null)
   const marquee = useRef<Rect | null>(null)
+  const measurePoints = useRef<{ sx: number; sy: number; ex: number; ey: number } | null>(null)
   const spaceDown = useRef(false)
   /** Grupo de trazos activo: los trazos seguidos con las mismas opciones se acumulan en un elemento. */
   const strokeGroup = useRef<{ id: string; key: string } | null>(null)
@@ -308,6 +311,7 @@ export function CanvasStage() {
       }
     }
     if (marquee.current) drawMarquee(octx2, t, marquee.current)
+    if (measurePoints.current) drawMeasureOverlay(octx2, t, measurePoints.current)
 
     const c = cursorPx.current
     const showCursor =
@@ -815,6 +819,18 @@ export function CanvasStage() {
         return
       }
 
+      case 'measure': {
+        measurePoints.current = { sx: p.x, sy: p.y, ex: p.x, ey: p.y }
+        interaction.current = {
+          kind: 'measure',
+          pointerId: e.pointerId,
+          sx: p.x,
+          sy: p.y,
+        }
+        requestOverlayRedraw.current()
+        return
+      }
+
       case 'select': {
         const t = getTransform()
         const b = selectionBounds(st)
@@ -955,7 +971,7 @@ export function CanvasStage() {
     cursorPx.current = p
     if (!prev || prev.x !== p.x || prev.y !== p.y) requestOverlayRedraw.current()
 
-    if (it.kind !== 'move' && it.kind !== 'pan') {
+    if (it.kind !== 'move' && it.kind !== 'pan' && it.kind !== 'measure') {
       const cw = st.scene.canvas.w
       const ch = st.scene.canvas.h
       if (p.x >= 0 && p.x < cw && p.y >= 0 && p.y < ch) {
@@ -970,6 +986,20 @@ export function CanvasStage() {
     }
 
     switch (it.kind) {
+      case 'measure': {
+        const dx = p.x - it.sx
+        const dy = p.y - it.sy
+        const dist = Math.hypot(dx, dy)
+        measurePoints.current = { sx: it.sx, sy: it.sy, ex: p.x, ey: p.y }
+        setTooltip({
+          x: css.x,
+          y: css.y,
+          text: `ΔX: ${Math.abs(dx)}, ΔY: ${Math.abs(dy)} (D: ${dist.toFixed(1)})`,
+        })
+        requestOverlayRedraw.current()
+        return
+      }
+
       case 'pan': {
         st.setViewport({
           panX: it.panX + (css.x - it.cssX),
@@ -1275,7 +1305,9 @@ export function CanvasStage() {
       st.setSelection(e.shiftKey ? Array.from(new Set([...st.selection, ...picked])) : picked)
       marquee.current = null
     }
-    setTooltip(null)
+    if (it.kind !== 'measure') {
+      setTooltip(null)
+    }
     interaction.current = { kind: 'none' }
     requestDraw.current()
   }
@@ -1523,6 +1555,10 @@ export function CanvasStage() {
 
   useEffect(() => {
     setContextMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev))
+    if (tool !== 'measure') {
+      measurePoints.current = null
+      requestOverlayRedraw.current?.()
+    }
   }, [tool])
 
   const isProcessing = useEditor((s) => s.isProcessing)

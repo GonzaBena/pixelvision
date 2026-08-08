@@ -316,4 +316,16 @@ export const IconChevronsUp = ({ size = 16 }: IconProps) =>
 export const IconChevronsDown = ({ size = 16 }: IconProps) =>
   svg(<path d="M7 13l5 5 5-5M7 6l5 5 5-5" />, size)
 
+export const IconMeasure = ({ size = 18 }: IconProps) =>
+  svg(
+    <>
+      <path d="M19 5L5 19" />
+      <path d="M14 5l3 3" />
+      <path d="M11 8l3 3" />
+      <path d="M8 11l3 3" />
+      <path d="M5 14l3 3" />
+    </>,
+    size,
+  )
+
 
