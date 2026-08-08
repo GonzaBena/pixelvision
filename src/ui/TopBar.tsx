@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import { downloadBlob, exportPNG } from '../core/export'
-import { clearAutosave, deserializeProject, serializeProject } from '../core/persist'
-import { useEditor } from '../state/store'
+import { useEffect, useRef, useState } from "react";
+import { downloadBlob, exportPNG } from "../core/export";
+import {
+  clearAutosave,
+  deserializeProject,
+  serializeProject,
+} from "../core/persist";
+import { useEditor } from "../state/store";
 import {
   IconDownload,
   IconGrid,
@@ -11,92 +15,101 @@ import {
   IconSliders,
   IconTrash,
   IconUpload,
-} from './Icons'
+} from "./Icons";
 
-const PRESETS = [16, 32, 48, 64, 96, 128, 256]
+const PRESETS = [16, 32, 48, 64, 96, 128, 256];
 
 interface Props {
-  onToggleLayers: () => void
-  onToggleHelp: () => void
-  onToggleProps: () => void
-  layersOpen: boolean
-  propsOpen: boolean
+  onToggleLayers: () => void;
+  onToggleHelp: () => void;
+  onToggleProps: () => void;
+  layersOpen: boolean;
+  propsOpen: boolean;
 }
 
-export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen, propsOpen }: Props) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [confirmingClear, setConfirmingClear] = useState(false)
-  const [openError, setOpenError] = useState<string | null>(null)
-  const [exportScale, setExportScale] = useState(1)
-  const [estimatedSizeKb, setEstimatedSizeKb] = useState<number | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
-  const showGrid = useEditor((s) => s.showGrid)
-  const tileGrid = useEditor((s) => s.showTileGrid)
-  const version = useEditor((s) => s.version)
+export function TopBar({
+  onToggleLayers,
+  onToggleHelp,
+  onToggleProps,
+  layersOpen,
+  propsOpen,
+}: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [exportScale, setExportScale] = useState(1);
+  const [estimatedSizeKb, setEstimatedSizeKb] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const showGrid = useEditor((s) => s.showGrid);
+  const tileGrid = useEditor((s) => s.showTileGrid);
+  const version = useEditor((s) => s.version);
 
   useEffect(() => {
-    if (!menuOpen) return
-    let active = true
+    if (!menuOpen) return;
+    let active = true;
     const updateSize = async () => {
       try {
-        const blob = await exportPNG(useEditor.getState().scene, exportScale)
+        const blob = await exportPNG(useEditor.getState().scene, exportScale);
         if (active) {
-          setEstimatedSizeKb(blob.size / 1024)
+          setEstimatedSizeKb(blob.size / 1024);
         }
       } catch (err) {
-        console.error(err)
+        console.error(err);
       }
-    }
-    void updateSize()
+    };
+    void updateSize();
     return () => {
-      active = false
-    }
-  }, [exportScale, version, menuOpen])
+      active = false;
+    };
+  }, [exportScale, version, menuOpen]);
 
   useEffect(() => {
     if (!menuOpen) {
-      setConfirmingClear(false)
-      setOpenError(null)
-      return
+      setConfirmingClear(false);
+      setOpenError(null);
+      return;
     }
     const onDown = (e: MouseEvent | TouchEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('touchstart', onDown)
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
     return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('touchstart', onDown)
-    }
-  }, [menuOpen])
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [menuOpen]);
 
-  const st = useEditor.getState()
-  const canvas = st.scene.canvas
+  const st = useEditor.getState();
+  const canvas = st.scene.canvas;
 
   const doExport = async (scale: number) => {
-    const blob = await exportPNG(useEditor.getState().scene, scale)
-    downloadBlob(blob, `pixelvision-${canvas.w}x${canvas.h}@${scale}x.png`)
-    setMenuOpen(false)
-  }
+    const blob = await exportPNG(useEditor.getState().scene, scale);
+    downloadBlob(blob, `pixelvision-${canvas.w}x${canvas.h}@${scale}x.png`);
+    setMenuOpen(false);
+  };
 
   const doSave = () => {
-    const json = serializeProject(useEditor.getState().scene)
-    downloadBlob(new Blob([json], { type: 'application/json' }), 'proyecto.pixelvision.json')
-    setMenuOpen(false)
-  }
+    const json = serializeProject(useEditor.getState().scene);
+    downloadBlob(
+      new Blob([json], { type: "application/json" }),
+      "proyecto.pixelvision.json",
+    );
+    setMenuOpen(false);
+  };
 
   const doOpen = async (file: File) => {
     try {
-      const scene = deserializeProject(await file.text())
-      useEditor.getState().loadScene(scene)
-      setMenuOpen(false)
+      const scene = deserializeProject(await file.text());
+      useEditor.getState().loadScene(scene);
+      setMenuOpen(false);
     } catch (err) {
       // El error se muestra dentro del menú: un alert() nativo desentona y
       // además bloquea la página hasta que alguien lo cierre a mano.
-      setOpenError((err as Error).message)
+      setOpenError((err as Error).message);
     }
-  }
+  };
 
   return (
     <div className="topbar">
@@ -111,7 +124,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
         >
           <IconMenu />
         </button>
-        <span className="brand">PixelVision</span>
+        <span className="brand">PyxelVision</span>
 
         {menuOpen && (
           <div className="menu">
@@ -123,7 +136,9 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
                 min={1}
                 max={1024}
                 value={canvas.w}
-                onChange={(e) => st.setCanvasSize(Number(e.target.value) || 1, canvas.h)}
+                onChange={(e) =>
+                  st.setCanvasSize(Number(e.target.value) || 1, canvas.h)
+                }
                 aria-label="Ancho del lienzo"
               />
               <span className="menu__x">×</span>
@@ -133,7 +148,9 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
                 min={1}
                 max={1024}
                 value={canvas.h}
-                onChange={(e) => st.setCanvasSize(canvas.w, Number(e.target.value) || 1)}
+                onChange={(e) =>
+                  st.setCanvasSize(canvas.w, Number(e.target.value) || 1)
+                }
                 aria-label="Alto del lienzo"
               />
             </div>
@@ -142,7 +159,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
                 <button
                   key={n}
                   type="button"
-                  className={`chip${canvas.w === n && canvas.h === n ? ' chip--active' : ''}`}
+                  className={`chip${canvas.w === n && canvas.h === n ? " chip--active" : ""}`}
                   onClick={() => st.setCanvasSize(n, n)}
                 >
                   {n}²
@@ -157,7 +174,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
                 <button
                   key={k}
                   type="button"
-                  className={`chip${exportScale === k ? ' chip--active' : ''}`}
+                  className={`chip${exportScale === k ? " chip--active" : ""}`}
                   onClick={() => setExportScale(k)}
                 >
                   {k}×
@@ -165,13 +182,29 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
               ))}
             </div>
             <div className="menu__export-info">
-              <div>Dimensiones: <strong>{canvas.w * exportScale} × {canvas.h * exportScale} px</strong></div>
-              <div>Peso est.: <strong>{estimatedSizeKb !== null ? `${estimatedSizeKb.toFixed(1)} KB` : '...'}</strong></div>
+              <div>
+                Dimensiones:{" "}
+                <strong>
+                  {canvas.w * exportScale} × {canvas.h * exportScale} px
+                </strong>
+              </div>
+              <div>
+                Peso est.:{" "}
+                <strong>
+                  {estimatedSizeKb !== null
+                    ? `${estimatedSizeKb.toFixed(1)} KB`
+                    : "..."}
+                </strong>
+              </div>
             </div>
             <button
               type="button"
               className="menu__item"
-              style={{ fontWeight: 600, color: 'var(--accent)', justifyContent: 'center' }}
+              style={{
+                fontWeight: 600,
+                color: "var(--accent)",
+                justifyContent: "center",
+              }}
               onClick={() => void doExport(exportScale)}
             >
               <IconDownload size={16} /> Descargar PNG
@@ -181,10 +214,16 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
             <button type="button" className="menu__item" onClick={doSave}>
               <IconDownload size={16} /> Guardar proyecto (.json)
             </button>
-            <button type="button" className="menu__item" onClick={() => fileRef.current?.click()}>
+            <button
+              type="button"
+              className="menu__item"
+              onClick={() => fileRef.current?.click()}
+            >
               <IconUpload size={16} /> Abrir proyecto…
             </button>
-            {openError && <p className="hint hint--error">No se pudo abrir: {openError}</p>}
+            {openError && (
+              <p className="hint hint--error">No se pudo abrir: {openError}</p>
+            )}
 
             {confirmingClear ? (
               <div className="menu__confirm">
@@ -201,10 +240,10 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
                     type="button"
                     className="btn btn--ghost btn--sm btn--danger"
                     onClick={() => {
-                      st.clearCanvas()
-                      void clearAutosave()
-                      setConfirmingClear(false)
-                      setMenuOpen(false)
+                      st.clearCanvas();
+                      void clearAutosave();
+                      setConfirmingClear(false);
+                      setMenuOpen(false);
                     }}
                   >
                     Vaciar
@@ -229,18 +268,17 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
           accept="application/json,.json"
           hidden
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) void doOpen(f)
-            e.target.value = ''
+            const f = e.target.files?.[0];
+            if (f) void doOpen(f);
+            e.target.value = "";
           }}
         />
       </div>
 
-
       <div className="island topbar__group">
         <button
           type="button"
-          className={`btn btn--icon${showGrid ? ' btn--on' : ''}`}
+          className={`btn btn--icon${showGrid ? " btn--on" : ""}`}
           onClick={() => st.setShowGrid(!showGrid)}
           data-tooltip="Grilla de píxeles"
           aria-label="Grilla de píxeles"
@@ -262,7 +300,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
         </select>
         <button
           type="button"
-          className={`btn btn--icon${propsOpen ? ' btn--on' : ''}`}
+          className={`btn btn--icon${propsOpen ? " btn--on" : ""}`}
           onClick={onToggleProps}
           data-tooltip="Propiedades"
           aria-label="Propiedades"
@@ -272,7 +310,7 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
         </button>
         <button
           type="button"
-          className={`btn btn--icon${layersOpen ? ' btn--on' : ''}`}
+          className={`btn btn--icon${layersOpen ? " btn--on" : ""}`}
           onClick={onToggleLayers}
           data-tooltip="Capas"
           aria-label="Capas"
@@ -291,5 +329,5 @@ export function TopBar({ onToggleLayers, onToggleHelp, onToggleProps, layersOpen
         </button>
       </div>
     </div>
-  )
+  );
 }

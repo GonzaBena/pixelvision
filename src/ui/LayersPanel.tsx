@@ -1,12 +1,37 @@
 import { useState } from 'react'
 import { useEditor } from '../state/store'
-import { IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './Icons'
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconChevronsDown,
+  IconChevronsUp,
+  IconEye,
+  IconEyeOff,
+  IconLock,
+  IconTrash,
+  IconUnlock,
+} from './Icons'
 import type { PVElement } from '../core/types'
 
-function defaultLabel(el: PVElement): string {
+function getElementNumber(el: PVElement, allElements: PVElement[]): number {
+  let count = 0
+  for (const item of allElements) {
+    if (item.type === el.type) {
+      count++
+      if (item.id === el.id) {
+        return count
+      }
+    }
+  }
+  return count
+}
+
+function defaultLabel(el: PVElement, allElements: PVElement[]): string {
   switch (el.type) {
-    case 'freedraw':
-      return 'Trazo'
+    case 'freedraw': {
+      const num = getElementNumber(el, allElements)
+      return `Trazo ${num}`
+    }
     case 'rect':
       return 'Rectángulo'
     case 'ellipse':
@@ -22,8 +47,10 @@ function defaultLabel(el: PVElement): string {
       }[el.variant]
     case 'text':
       return el.text.split('\n')[0].slice(0, 18) || 'Texto'
-    case 'image':
-      return 'Imagen'
+    case 'image': {
+      const num = getElementNumber(el, allElements)
+      return `Imagen ${num}`
+    }
   }
 }
 
@@ -64,10 +91,12 @@ export function LayersPanel({ open = false, onClose }: { open?: boolean; onClose
       {elements.length === 0 && <p className="hint hint--empty">Todavía no dibujaste nada.</p>}
 
       <ul className="layers__list">
-        {elements.map((el) => {
+        {elements.map((el, index) => {
           const active = selection.includes(el.id)
           const isEditing = editingId === el.id
-          const label = defaultLabel(el)
+          const label = defaultLabel(el, st.scene.elements)
+          const isFirst = index === 0
+          const isLast = index === elements.length - 1
 
           return (
             <li key={el.id} className={`layer${active ? ' layer--active' : ''}`}>
@@ -103,6 +132,60 @@ export function LayersPanel({ open = false, onClose }: { open?: boolean; onClose
                   )}
                 </button>
               )}
+              <div className="layer__reorder-group">
+                <button
+                  type="button"
+                  className="layer__btn"
+                  data-tooltip="Traer al frente"
+                  data-tooltip-dir="up"
+                  disabled={isFirst}
+                  onClick={() => {
+                    st.pushHistory()
+                    st.reorder(el.id, 'front')
+                  }}
+                >
+                  <IconChevronsUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="layer__btn"
+                  data-tooltip="Traer adelante"
+                  data-tooltip-dir="up"
+                  disabled={isFirst}
+                  onClick={() => {
+                    st.pushHistory()
+                    st.reorder(el.id, 1)
+                  }}
+                >
+                  <IconChevronUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="layer__btn"
+                  data-tooltip="Enviar atrás"
+                  data-tooltip-dir="up"
+                  disabled={isLast}
+                  onClick={() => {
+                    st.pushHistory()
+                    st.reorder(el.id, -1)
+                  }}
+                >
+                  <IconChevronDown size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="layer__btn"
+                  data-tooltip="Enviar al fondo"
+                  data-tooltip-dir="up"
+                  disabled={isLast}
+                  onClick={() => {
+                    st.pushHistory()
+                    st.reorder(el.id, 'back')
+                  }}
+                >
+                  <IconChevronsDown size={14} />
+                </button>
+              </div>
               <button
                 type="button"
                 className="layer__btn"

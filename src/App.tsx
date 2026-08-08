@@ -236,6 +236,7 @@ export default function App() {
       id: newId('img'),
       rev: 0,
       type: 'image',
+      name: file.name,
       x: Math.floor((cw - w) / 2),
       y: Math.floor((ch - h) / 2),
       w,

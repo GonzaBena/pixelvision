@@ -19,10 +19,12 @@ import {
   newId,
   normalizeRect,
 } from '../core/elements'
-import { scaleWithin } from '../core/transforms'
+import { scaleWithin, scaleSelectionUniformly } from '../core/transforms'
 import { decodeImageBlob, newSourceId, putImageSource } from '../core/image/imageStore'
 import { suggestScaleMode } from '../core/image/processImage'
 import { selectionBounds, useEditor, type EditorState } from '../state/store'
+import { ContextMenu } from '../ui/ContextMenu'
+import { MoveModal, ScaleModal } from '../ui/ContextMenuModals'
 import {
   computeTransform,
   fitToView,
@@ -136,6 +138,13 @@ export function CanvasStage() {
   const [dropping, setDropping] = useState(false)
   const [loadingImage, setLoadingImage] = useState(false)
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({
+    x: 0,
+    y: 0,
+    visible: false,
+  })
+  const [isMoveOpen, setIsMoveOpen] = useState(false)
+  const [isScaleOpen, setIsScaleOpen] = useState(false)
 
   const requestDraw = useRef<() => void>(() => {})
   const requestOverlayRedraw = useRef<() => void>(() => {})
@@ -282,6 +291,22 @@ export function CanvasStage() {
 
     const bounds = selectionBounds(st)
     if (bounds && st.tool === 'select') drawSelection(octx2, t, bounds, true)
+    if (st.selection.length > 1 && st.keyObjectId && st.tool === 'select') {
+      const keyEl = st.scene.elements.find((e) => e.id === st.keyObjectId)
+      if (keyEl) {
+        const keyBounds = elementBounds(keyEl)
+        octx2.save()
+        octx2.strokeStyle = '#6965db'
+        octx2.lineWidth = Math.max(2, Math.round(t.dpr * 2))
+        octx2.strokeRect(
+          t.ox + keyBounds.x * t.scale - octx2.lineWidth / 2,
+          t.oy + keyBounds.y * t.scale - octx2.lineWidth / 2,
+          keyBounds.w * t.scale + octx2.lineWidth,
+          keyBounds.h * t.scale + octx2.lineWidth,
+        )
+        octx2.restore()
+      }
+    }
     if (marquee.current) drawMarquee(octx2, t, marquee.current)
 
     const c = cursorPx.current
@@ -826,6 +851,8 @@ export function CanvasStage() {
           } else if (!sel.includes(hit.id)) {
             st.setSelection([hit.id])
             sel = [hit.id]
+          } else if (sel.length > 1) {
+            st.setKeyObjectId(hit.id)
           }
           st.pushHistory()
           const orig = st.scene.elements
@@ -1325,12 +1352,14 @@ export function CanvasStage() {
       const h = Math.max(1, Math.round(src.h * k))
       const srcId = newSourceId()
       putImageSource(srcId, src)
+      const fileName = (blob as any).name || undefined
       const el: ImageElement = {
         id: newId('img'),
         rev: 0,
         x: Math.floor((cw - w) / 2),
         y: Math.floor((ch - h) / 2),
         type: 'image',
+        name: fileName,
         w,
         h,
         srcId,
@@ -1439,6 +1468,53 @@ export function CanvasStage() {
     }
   }
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const st = useEditor.getState()
+    if (st.isProcessing) return
+
+    const p = toPixel(e)
+    const hitSlop = 1
+    const hit = hitTestWithSlop(st.scene, p.x, p.y, hitSlop)
+
+    if (hit) {
+      if (!st.selection.includes(hit.id)) {
+        st.setSelection([hit.id])
+      }
+    } else {
+      st.setSelection([])
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true,
+    })
+  }
+
+  const handleConfirmMove = useCallback((dx: number, dy: number) => {
+    const st = useEditor.getState()
+    if (st.selection.length === 0) return
+    st.pushHistory()
+    for (const id of st.selection) {
+      const el = st.scene.elements.find((e) => e.id === id)
+      if (el) {
+        st.updateElement(id, { x: el.x + dx, y: el.y + dy })
+      }
+    }
+  }, [])
+
+  const handleConfirmScale = useCallback((factor: number) => {
+    const st = useEditor.getState()
+    if (st.selection.length === 0) return
+    st.pushHistory()
+    const selectedElements = st.scene.elements.filter((e) => st.selection.includes(e.id))
+    const patches = scaleSelectionUniformly(selectedElements, factor)
+    for (const { id, patch } of patches) {
+      st.updateElement(id, patch)
+    }
+  }, [])
+
   const tool = useEditor((s) => s.tool)
   const isProcessing = useEditor((s) => s.isProcessing)
   const cssCursor =
@@ -1462,7 +1538,7 @@ export function CanvasStage() {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onPointerLeave={onPointerLeave}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={handleContextMenu}
       onDragOver={(e) => {
         e.preventDefault()
         setDropping(true)
@@ -1491,6 +1567,24 @@ export function CanvasStage() {
           {tooltip.text}
         </div>
       )}
+      <ContextMenu
+        x={contextMenu.x}
+        y={contextMenu.y}
+        visible={contextMenu.visible}
+        onClose={() => setContextMenu((prev) => ({ ...prev, visible: false }))}
+        onOpenMoveModal={() => setIsMoveOpen(true)}
+        onOpenScaleModal={() => setIsScaleOpen(true)}
+      />
+      <MoveModal
+        isOpen={isMoveOpen}
+        onClose={() => setIsMoveOpen(false)}
+        onConfirm={handleConfirmMove}
+      />
+      <ScaleModal
+        isOpen={isScaleOpen}
+        onClose={() => setIsScaleOpen(false)}
+        onConfirm={handleConfirmScale}
+      />
     </div>
   )
 }

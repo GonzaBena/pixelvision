@@ -767,7 +767,7 @@ textarea {
   position: absolute;
   top: 68px;
   right: 12px;
-  width: 244px;
+  width: 280px;
   max-height: calc(100% - 142px);
   display: flex;
   flex-direction: column;
@@ -804,6 +804,7 @@ textarea {
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -867,13 +868,29 @@ textarea {
   cursor: pointer;
 }
 
-.layer__btn:hover {
+.layer__btn:hover:not(:disabled) {
   background: var(--island);
   color: var(--text);
 }
 
-.layer__btn--danger:hover {
+.layer__btn--danger:hover:not(:disabled) {
   color: var(--danger);
+}
+
+.layer__btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.layer__reorder-group {
+  display: none;
+  align-items: center;
+  gap: 1px;
+}
+
+.layer:hover .layer__reorder-group,
+.layer--active .layer__reorder-group {
+  display: flex;
 }
 
 /* --- Zoom ----------------------------------------------------------------- */
@@ -1345,3 +1362,162 @@ kbd {
   -webkit-backdrop-filter: blur(6px);
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
+
+/* --- Menu Contextual (Context Menu) --------------------------------------- */
+
+.context-menu-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  background: transparent;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 1001;
+  background: rgba(28, 28, 30, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.context-menu--right-aligned {
+  transform: translateX(-100%);
+}
+
+.context-menu--bottom-aligned {
+  transform: translateY(-100%);
+}
+
+.context-menu--right-aligned.context-menu--bottom-aligned {
+  transform: translate(-100%, -100%);
+}
+
+.context-menu__btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.context-menu__btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.context-menu__btn:disabled {
+  color: var(--text-dim);
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.context-menu__btn--danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: #fff;
+}
+
+.context-menu__shortcut {
+  font-size: 10px;
+  opacity: 0.5;
+  margin-left: 12px;
+  font-family: monospace;
+}
+
+.context-menu__arrow {
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+.context-menu__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 6px;
+}
+
+/* Nested Submenu System */
+.context-menu__item-nested {
+  position: relative;
+}
+
+.context-menu__submenu {
+  display: none;
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  background: rgba(28, 28, 30, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  width: 190px;
+  z-index: 1002;
+  flex-direction: column;
+}
+
+.context-menu__item-nested:hover:not(.context-menu__item-nested--disabled) > .context-menu__submenu {
+  display: flex;
+}
+
+.context-menu__item-nested--disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.context-menu--right-aligned .context-menu__submenu {
+  left: auto;
+  right: 100%;
+}
+
+/* --- Formularios en Modales (Modal Forms) --------------------------------- */
+
+.modal-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.modal-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-form-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.modal-form-field input {
+  padding: 8px 10px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+

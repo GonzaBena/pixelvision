@@ -44,6 +44,30 @@ const MAX_CANVAS_DIM = 4096
 
 const isDarkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
 
+function getElementDefaultTypeName(el: PVElement): string {
+  switch (el.type) {
+    case 'freedraw':
+      return 'Trazo'
+    case 'rect':
+      return 'Rectángulo'
+    case 'ellipse':
+      return 'Elipse'
+    case 'line':
+      return el.arrow ? 'Flecha' : 'Línea'
+    case 'poly':
+      return {
+        triangle: 'Triángulo',
+        diamond: 'Rombo',
+        star: 'Estrella',
+        hexagon: 'Hexágono',
+      }[el.variant]
+    case 'text':
+      return el.text.split('\n')[0].slice(0, 18) || 'Texto'
+    case 'image':
+      return 'Imagen'
+  }
+}
+
 function initialScene(): Scene {
   return {
     canvas: { w: 64, h: 64, background: isDarkMode ? '#1e1e1e' : null },
@@ -56,6 +80,7 @@ export interface EditorState {
   /** Figura en curso mientras se arrastra; se dibuja arriba sin entrar a la escena. */
   draft: PVElement | null
   selection: string[]
+  keyObjectId: string | null
   tool: ToolId
   options: ToolOptions
   eraserMode: EraserMode
@@ -84,6 +109,7 @@ export interface EditorState {
   setOptions: (patch: Partial<ToolOptions>) => void
   setEraserMode: (m: EraserMode) => void
   setViewport: (patch: Partial<Viewport>) => void
+  setKeyObjectId: (id: string | null) => void
   setShowGrid: (v: boolean) => void
   setTileGrid: (n: number) => void
   setRestrictPalette: (id: string | null) => void
@@ -218,6 +244,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   scene: initialScene(),
   draft: null,
   selection: [],
+  keyObjectId: null,
   tool: 'brush',
   options: {
     ...DEFAULT_TOOL_OPTIONS,
@@ -377,11 +404,17 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   addElement: (el, select = false) =>
     set((s) => {
-      const elements = [...s.scene.elements, el]
+      let namedEl = el
+      if (!el.name) {
+        const count = s.scene.elements.filter((e) => e.type === el.type).length + 1
+        const typeName = getElementDefaultTypeName(el)
+        namedEl = { ...el, name: `${typeName} ${count}` }
+      }
+      const elements = [...s.scene.elements, namedEl]
       return {
         scene: { ...s.scene, elements },
         version: s.version + 1,
-        selection: select ? [el.id] : s.selection,
+        selection: select ? [namedEl.id] : s.selection,
       }
     }),
 
@@ -418,11 +451,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       const kill = new Set(ids)
       const elements = s.scene.elements.filter((e) => !kill.has(e.id))
       for (const id of ids) invalidateRaster(id)
+      const nextSelection = s.selection.filter((id) => !kill.has(id))
+      const keyObjectId = nextSelection.length > 1 && s.keyObjectId && nextSelection.includes(s.keyObjectId)
+        ? s.keyObjectId
+        : null
       const nextState = {
         ...s,
         scene: { ...s.scene, elements },
         version: s.version + 1,
-        selection: s.selection.filter((id) => !kill.has(id)),
+        selection: nextSelection,
+        keyObjectId,
       }
       const shrinkPatch = shrinkToFitHelper(nextState)
       return {
@@ -448,20 +486,36 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
     }),
 
-  setSelection: (selection) => set({ selection }),
+  setSelection: (selection) =>
+    set((s) => {
+      const keyObjectId = selection.length > 1 && s.keyObjectId && selection.includes(s.keyObjectId)
+        ? s.keyObjectId
+        : null
+      return { selection, keyObjectId }
+    }),
 
   toggleSelection: (id) =>
-    set((s) => ({
-      selection: s.selection.includes(id)
+    set((s) => {
+      const nextSelection = s.selection.includes(id)
         ? s.selection.filter((x) => x !== id)
-        : [...s.selection, id],
-    })),
+        : [...s.selection, id]
+      const keyObjectId = nextSelection.length > 1 && s.keyObjectId && nextSelection.includes(s.keyObjectId)
+        ? s.keyObjectId
+        : null
+      return {
+        selection: nextSelection,
+        keyObjectId,
+      }
+    }),
 
   selectAll: () =>
     set((s) => ({
       selection: s.scene.elements.filter((e) => !e.locked && !e.hidden).map((e) => e.id),
+      keyObjectId: null,
       tool: 'select',
     })),
+
+  setKeyObjectId: (keyObjectId) => set({ keyObjectId }),
 
   clearCanvas: () => {
     get().pushHistory()
@@ -558,11 +612,18 @@ export const useEditor = create<EditorState>((set, get) => ({
   loadScene: (scene) =>
     set((s) => {
       invalidateRaster()
+      const elements = scene.elements.map((el, i) => {
+        if (el.name) return el
+        const count = scene.elements.slice(0, i).filter((e) => e.type === el.type).length + 1
+        const typeName = getElementDefaultTypeName(el)
+        return { ...el, name: `${typeName} ${count}` }
+      })
       return {
-        scene,
+        scene: { ...scene, elements },
         canvasBaseWidth: scene.canvas.w,
         canvasBaseHeight: scene.canvas.h,
         selection: [],
+        keyObjectId: null,
         draft: null,
         past: [],
         future: [],

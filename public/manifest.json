@@ -1,6 +1,6 @@
 {
   "id": "./",
-  "name": "PixelVision — Pizarra de Pixel Art",
+  "name": "PyxelVision — Pizarra de Pixel Art",
   "short_name": "PixelVision",
   "description": "Pizarra de pixel art infinita con rasterizado de enteros y objetos editables",
   "start_url": "./",

@@ -304,3 +304,16 @@ export const IconSliders = ({ size = 18 }: IconProps) =>
     size,
   )
 
+export const IconChevronUp = ({ size = 16 }: IconProps) =>
+  svg(<path d="M18 15l-6-6-6 6" />, size)
+
+export const IconChevronDown = ({ size = 16 }: IconProps) =>
+  svg(<path d="M6 9l6 6 6-6" />, size)
+
+export const IconChevronsUp = ({ size = 16 }: IconProps) =>
+  svg(<path d="M17 11l-5-5-5 5M17 18l-5-5-5 5" />, size)
+
+export const IconChevronsDown = ({ size = 16 }: IconProps) =>
+  svg(<path d="M7 13l5 5 5-5M7 6l5 5 5-5" />, size)
+
+
