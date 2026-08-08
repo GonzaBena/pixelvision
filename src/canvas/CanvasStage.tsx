@@ -459,6 +459,9 @@ export function CanvasStage() {
     fd.opacity = o.opacity
     st.addElement(fd)
     strokeGroup.current = { id: fd.id, key }
+    
+    const actual = useEditor.getState().scene.elements.find((e) => e.id === fd.id)
+    if (actual && actual.type === 'freedraw') return actual
     return fd
   }
 
