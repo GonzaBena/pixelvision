@@ -1517,6 +1517,11 @@ export function CanvasStage() {
   }, [])
 
   const tool = useEditor((s) => s.tool)
+
+  useEffect(() => {
+    setContextMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev))
+  }, [tool])
+
   const isProcessing = useEditor((s) => s.isProcessing)
   const cssCursor =
     cursorLabel === 'grab'
