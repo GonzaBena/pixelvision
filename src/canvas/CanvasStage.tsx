@@ -1471,6 +1471,7 @@ export function CanvasStage() {
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     const st = useEditor.getState()
+    if (st.tool !== 'select') return
     if (st.isProcessing) return
 
     const p = toPixel(e)
